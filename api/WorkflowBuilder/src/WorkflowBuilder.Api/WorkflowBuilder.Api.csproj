@@ -21,4 +21,9 @@
       </Content>
     </ItemGroup>
 
+    <ItemGroup>
+      <ProjectReference Include="..\WorkflowBuilder.Application\WorkflowBuilder.Application.csproj" />
+      <ProjectReference Include="..\WorkflowBuilder.Infrastructure\WorkflowBuilder.Infrastructure.csproj" />
+    </ItemGroup>
+
 </Project>

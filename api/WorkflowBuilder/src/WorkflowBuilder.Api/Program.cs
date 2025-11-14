@@ -1,6 +1,8 @@
 using System.Reflection;
 using Scalar.AspNetCore;
 using WorkflowBuilder.Api.Extensions;
+using WorkflowBuilder.Application.Extensions;
+using WorkflowBuilder.Infrastructure.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
 var environment = EnvironmentExtensions.GetEnvironmentName();
@@ -12,7 +14,9 @@ builder.Configuration
     .AddUserSecrets(Assembly.GetExecutingAssembly());
 
 builder.Services
-    .AddApiDependencies();
+    .AddApiDependencies()
+    .AddApplicationDependencies()
+    .AddInfrastructureDependencies();
 
 var app = builder.Build();
 
