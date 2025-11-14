@@ -2,6 +2,8 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using MongoDB.Driver;
+using WorkflowBuilder.Domain.Entities;
+using WorkflowBuilder.Infrastructure.Data;
 using WorkflowBuilder.Infrastructure.Options;
 
 namespace WorkflowBuilder.Infrastructure.Extensions;
@@ -12,7 +14,8 @@ public static class ServiceCollectionExtensions
     {
       return services
         .AddConfigurations(configuration)
-        .SetupMongoDb();
+        .SetupMongoDb()
+        .SetupCollections();
     }
     
     private static IServiceCollection AddConfigurations(this IServiceCollection services, IConfiguration configuration)
@@ -46,6 +49,21 @@ public static class ServiceCollectionExtensions
         var client = sp.GetRequiredService<IMongoClient>();
         var options = sp.GetRequiredService<IOptions<MongoDbConnectionOptions>>().Value;
         return client.GetDatabase(options.DatabaseName);
+      });
+
+      return services;
+    }
+
+    private static IServiceCollection SetupCollections(this IServiceCollection services)
+    {
+      services.AddScoped<IMongoCollection<Workflow>>(sp =>
+      {
+        var database = sp.GetRequiredService<IMongoDatabase>();
+        var collection = database.GetCollection<Workflow>(Collections.Workflows);
+        
+        WorkflowCollectionSetup.ConfigureWorkflowCollection(database);
+        
+        return collection;
       });
 
       return services;
