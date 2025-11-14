@@ -1,0 +1,7 @@
+﻿services:
+  postgres:
+    image: postgres:17
+    
+  pgadmin:
+    image: dpage/pgadmin4
+
