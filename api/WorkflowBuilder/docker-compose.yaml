@@ -1,7 +1,25 @@
 ﻿services:
-  postgres:
-    image: postgres:17
-    
-  pgadmin:
-    image: dpage/pgadmin4
+  mongo:
+    image: mongo:7
+    container_name: mongo
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
 
+  mongo-express:
+    image: mongo-express:latest
+    container_name: mongo-express
+    restart: unless-stopped
+    depends_on:
+      - mongo
+    ports:
+      - "8081:8081"
+    env_file:
+      - .env
+
+volumes:
+  mongo-data:
