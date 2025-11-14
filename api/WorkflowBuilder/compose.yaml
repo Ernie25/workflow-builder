@@ -1,7 +1,0 @@
-﻿services:
-  workflowbuilder.api:
-    image: workflowbuilder.api
-    build:
-      context: .
-      dockerfile: WorkflowBuilder.Api/Dockerfile
-
