@@ -17,6 +17,7 @@
     <ItemGroup>
         <ProjectReference Include="..\..\tests\WorkflowBuilder.Infrastructure.Tests\WorkflowBuilder.Infrastructure.Tests.csproj"/>
         <ProjectReference Include="..\WorkflowBuilder.Application\WorkflowBuilder.Application.csproj"/>
+        <ProjectReference Include="..\WorkflowBuilder.Domain\WorkflowBuilder.Domain.csproj"/>
     </ItemGroup>
 
 </Project>
