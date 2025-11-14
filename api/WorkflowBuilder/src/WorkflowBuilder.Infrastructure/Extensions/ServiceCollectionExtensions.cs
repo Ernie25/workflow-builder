@@ -3,8 +3,10 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using MongoDB.Driver;
 using WorkflowBuilder.Domain.Entities;
+using WorkflowBuilder.Domain.Repositories;
 using WorkflowBuilder.Infrastructure.Data;
 using WorkflowBuilder.Infrastructure.Options;
+using WorkflowBuilder.Infrastructure.Repositories;
 
 namespace WorkflowBuilder.Infrastructure.Extensions;
 
@@ -15,7 +17,8 @@ public static class ServiceCollectionExtensions
       return services
         .AddConfigurations(configuration)
         .SetupMongoDb()
-        .SetupCollections();
+        .SetupCollections()
+        .AddRepositories();
     }
     
     private static IServiceCollection AddConfigurations(this IServiceCollection services, IConfiguration configuration)
@@ -66,6 +69,12 @@ public static class ServiceCollectionExtensions
         return collection;
       });
 
+      return services;
+    }
+
+    private static IServiceCollection AddRepositories(this IServiceCollection services)
+    {
+      services.AddScoped<IWorkflowRepository, WorkflowRepository>();
       return services;
     }
 }
