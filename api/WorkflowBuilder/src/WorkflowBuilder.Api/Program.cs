@@ -16,7 +16,7 @@ builder.Configuration
 builder.Services
     .AddApiDependencies()
     .AddApplicationDependencies()
-    .AddInfrastructureDependencies();
+    .AddInfrastructureDependencies(builder.Configuration);
 
 var app = builder.Build();
 
