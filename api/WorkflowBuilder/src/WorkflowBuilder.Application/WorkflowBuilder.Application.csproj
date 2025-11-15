@@ -14,10 +14,5 @@
       <ProjectReference Include="..\..\tests\WorkflowBuilder.Application.Tests\WorkflowBuilder.Application.Tests.csproj" />
       <ProjectReference Include="..\WorkflowBuilder.Domain\WorkflowBuilder.Domain.csproj" />
     </ItemGroup>
-
-    <ItemGroup>
-      <Folder Include="Models\" />
-      <Folder Include="Repositories\" />
-    </ItemGroup>
     
 </Project>
