@@ -13,7 +13,8 @@ public sealed class WorkflowService(IWorkflowRepository workflowRepository) : IW
         {
             Name = "Untitled",
             CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
+            UpdatedAt = DateTime.UtcNow,
+            IsPublished = false
         };
 
         var createdWorkflow = await workflowRepository.CreateAsync(workflow, cancellationToken);
@@ -74,6 +75,28 @@ public sealed class WorkflowService(IWorkflowRepository workflowRepository) : IW
             existingWorkflow.Connections = request.Connections.Select(c => c.ToEntity()).ToList();
         }
 
+        existingWorkflow.UpdatedAt = DateTime.UtcNow;
+
+        var updatedWorkflow = await workflowRepository.UpdateAsync(id, existingWorkflow, cancellationToken);
+
+        if (updatedWorkflow is null)
+        {
+            return null;
+        }
+
+        return updatedWorkflow.ToResponse();
+    }
+
+    public async Task<WorkflowResponse?> PublishWorkflowAsync(string id, CancellationToken cancellationToken = default)
+    {
+        var existingWorkflow = await workflowRepository.GetByIdAsync(id, cancellationToken);
+        
+        if (existingWorkflow is null)
+        {
+            return null;
+        }
+        
+        existingWorkflow.IsPublished = true;
         existingWorkflow.UpdatedAt = DateTime.UtcNow;
 
         var updatedWorkflow = await workflowRepository.UpdateAsync(id, existingWorkflow, cancellationToken);

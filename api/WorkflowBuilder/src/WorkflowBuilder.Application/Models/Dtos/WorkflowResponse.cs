@@ -13,6 +13,8 @@ public sealed record WorkflowResponse
     public List<WorkflowNodeDto> Nodes { get; init; } = new();
     
     public List<WorkflowConnectionDto> Connections { get; init; } = new();
+        
+    public bool IsPublished { get; init; }
     
     public DateTime CreatedAt { get; init; }
     

@@ -23,6 +23,14 @@ public sealed class WorkflowsController : ControllerBase
         return Ok(workflow);
     }
     
+    [HttpGet]
+    [ProducesResponseType(typeof(IEnumerable<WorkflowResponse>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetAllWorkflows(CancellationToken cancellationToken)
+    {
+        var workflows = await _workflowService.GetAllWorkflowsAsync(cancellationToken);
+        return Ok(workflows);
+    }
+    
     [HttpGet("{id}")]
     [ProducesResponseType(typeof(WorkflowResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -47,6 +55,21 @@ public sealed class WorkflowsController : ControllerBase
         CancellationToken cancellationToken)
     {
         var workflow = await _workflowService.UpdateWorkflowAsync(id, request, cancellationToken);
+        
+        if (workflow == null)
+        {
+            return NotFound();
+        }
+
+        return Ok(workflow);
+    }
+    
+    [HttpPost("{id}/publish")]
+    [ProducesResponseType(typeof(WorkflowResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> PublishWorkflow(string id, CancellationToken cancellationToken)
+    {
+        var workflow = await _workflowService.PublishWorkflowAsync(id, cancellationToken);
         
         if (workflow == null)
         {

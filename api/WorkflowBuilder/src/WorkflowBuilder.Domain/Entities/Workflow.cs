@@ -15,6 +15,9 @@ public sealed class Workflow
     [BsonElement("description")]
     public string? Description { get; set; }
 
+    [BsonElement("isPublished")]
+    public bool IsPublished { get; set; }
+    
     [BsonElement("trigger")]
     public WorkflowTrigger? Trigger { get; set; }
 
