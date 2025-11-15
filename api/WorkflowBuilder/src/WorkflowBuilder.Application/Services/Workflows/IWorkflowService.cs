@@ -11,4 +11,6 @@ public interface IWorkflowService
   Task<IEnumerable<WorkflowResponse>> GetAllWorkflowsAsync(CancellationToken cancellationToken = default);
 
   Task<WorkflowResponse?> UpdateWorkflowAsync(string id, UpdateWorkflowRequest request, CancellationToken cancellationToken = default);
+
+  Task<WorkflowResponse?> PublishWorkflowAsync(string id, CancellationToken cancellationToken = default);
 }
