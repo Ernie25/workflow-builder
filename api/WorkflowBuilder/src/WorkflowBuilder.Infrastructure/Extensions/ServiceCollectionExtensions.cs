@@ -7,6 +7,7 @@ using WorkflowBuilder.Domain.Repositories;
 using WorkflowBuilder.Infrastructure.Data;
 using WorkflowBuilder.Infrastructure.Options;
 using WorkflowBuilder.Infrastructure.Repositories;
+using IWorkflowRepository = WorkflowBuilder.Domain.Repositories.IWorkflowRepository;
 
 namespace WorkflowBuilder.Infrastructure.Extensions;
 
@@ -68,13 +69,20 @@ public static class ServiceCollectionExtensions
         
         return collection;
       });
-
+      services.AddScoped<IMongoCollection<ExecutionWorkflow>>(sp =>
+      {
+        var database = sp.GetRequiredService<IMongoDatabase>();
+        var collection = database.GetCollection<ExecutionWorkflow>(Collections.ExecutionWorkflows);
+        return collection;
+      });
       return services;
     }
 
     private static IServiceCollection AddRepositories(this IServiceCollection services)
     {
       services.AddScoped<IWorkflowRepository, WorkflowRepository>();
+      services.AddScoped<IExecutionWorkflowRepository, ExecutionWorkflowRepository>();
+      
       return services;
     }
 }

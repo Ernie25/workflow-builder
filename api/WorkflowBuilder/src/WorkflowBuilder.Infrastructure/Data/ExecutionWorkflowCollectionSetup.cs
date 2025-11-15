@@ -14,27 +14,25 @@ public static class ExecutionWorkflowCollectionSetup
         
         if (_initializedDatabases.TryAdd(databaseName, true))
         {
-            var collection = database.GetCollection<Workflow>(Collections.Workflows);
+            var collection = database.GetCollection<ExecutionWorkflow>(Collections.ExecutionWorkflows);
 
-            var indexKeys = Builders<Workflow>.IndexKeys
-                .Ascending(w => w.Name)
-                .Descending(w => w.CreatedAt);
+            var indexKeys = Builders<ExecutionWorkflow>.IndexKeys;
 
             var indexOptions = new CreateIndexOptions
             {
                 Name = "idx_workflow_name_active_created"
             };
 
-            var indexModel = new CreateIndexModel<Workflow>(indexKeys, indexOptions);
-            
-            try
-            {
-                collection.Indexes.CreateOne(indexModel);
-            }
-            catch
-            {
-                // Index might already exist, ignore
-            }
+            // var indexModel = new CreateIndexModel<WorkflowExecution>(indexKeys, indexOptions);
+            //
+            // try
+            // {
+            //     collection.Indexes.CreateOne(indexModel);
+            // }
+            // catch
+            // {
+            //     // Index might already exist, ignore
+            // }
 
             // Create unique index on name (if needed - adjust based on requirements)
             // var uniqueIndexKeys = Builders<Workflow>.IndexKeys.Ascending(w => w.Name);

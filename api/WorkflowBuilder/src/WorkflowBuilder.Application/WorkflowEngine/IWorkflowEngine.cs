@@ -1,16 +1,9 @@
-﻿namespace WorkflowBuilder.Api.Application;
+﻿namespace WorkflowBuilder.Application.WorkflowEngine;
 
 public interface IWorkflowEngine
 {
   Task<string> StartExecutionAsync(
-    Guid workflowId,
-    int? version,
+    string workflowId,
     object? triggerInput,
     CancellationToken ct = default);
-
-  // Task ResumeExecutionFromFormAsync(
-  //   Guid executionId,
-  //   Guid formTaskId,
-  //   IDictionary<string, object> submittedData,
-  //   CancellationToken ct = default);
 }

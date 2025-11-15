@@ -1,22 +1,24 @@
-﻿using WorkflowBuilder.Application.Repositories;
+﻿using MongoDB.Driver;
 using WorkflowBuilder.Domain.Entities;
+using WorkflowBuilder.Domain.Repositories;
 
 namespace WorkflowBuilder.Infrastructure.Repositories;
 
-public class ExecutionWorkflowRepository : IExecutionWorkflowRepository
+public class ExecutionWorkflowRepository(IMongoCollection<ExecutionWorkflow> collection) : IExecutionWorkflowRepository
 {
 
-  public Task<WorkflowExecution> CreateAsync(WorkflowExecution execution, CancellationToken ct = default)
+  public async Task<ExecutionWorkflow> CreateAsync(ExecutionWorkflow execution, CancellationToken ct = default)
+  {
+    await collection.InsertOneAsync(execution, cancellationToken: ct);
+    return execution;
+  }
+
+  public Task UpdateAsync(ExecutionWorkflow execution, CancellationToken ct = default)
   {
     throw new NotImplementedException();
   }
 
-  public Task UpdateAsync(WorkflowExecution execution, CancellationToken ct = default)
-  {
-    throw new NotImplementedException();
-  }
-
-  public Task<WorkflowExecution?> GetAsync(Guid id, CancellationToken ct = default)
+  public Task<ExecutionWorkflow?> GetAsync(Guid id, CancellationToken ct = default)
   {
     throw new NotImplementedException();
   }

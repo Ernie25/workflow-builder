@@ -1,7 +1,6 @@
-﻿using WorkflowBuilder.Api.Application;
-using WorkflowBuilder.Application.Repositories;
-using WorkflowBuilder.Domain.Entities;
+﻿using WorkflowBuilder.Domain.Entities;
 using WorkflowBuilder.Domain.Entities.Enums;
+using WorkflowBuilder.Domain.Repositories;
 
 namespace WorkflowBuilder.Application.WorkflowEngine;
 
@@ -13,15 +12,14 @@ public class WorkflowEngine(
   : IWorkflowEngine
 {
   public async Task<string> StartExecutionAsync(
-    Guid workflowId,
-    int? version,
+    string workflowId,
     object? triggerInput,
     CancellationToken ct = default)
   {
-    var workflow = await workflowRepo.GetAsync(workflowId, version, ct)
+    var workflow = await workflowRepo.GetByIdAsync(workflowId, ct)
                    ?? throw new InvalidOperationException("Workflow not found");
 
-    var execution = new WorkflowExecution
+    var execution = new ExecutionWorkflow
     {
       WorkflowId = workflow.Id,
       Status = ExecutionStatus.Pending,

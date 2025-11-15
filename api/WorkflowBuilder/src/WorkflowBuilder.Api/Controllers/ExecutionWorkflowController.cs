@@ -1,16 +1,16 @@
 ﻿using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
-using WorkflowBuilder.Api.Application;
 using WorkflowBuilder.Application.WorkflowEngine;
 
 namespace WorkflowBuilder.Api.Controllers;
 
 [ApiController]
-[Route("webhook/{workflowId:guid}/{*path}")]
-public class WebhookController(IWorkflowEngine engine) : ControllerBase
+[Route("[controller]")]
+public class ExecutionWorkflowController(IWorkflowEngine engine) : ControllerBase
 {
+  [Route("{workflowId}/{path}")]
   [HttpPost]
-  public async Task<IActionResult> HandleWebhook(Guid workflowId, string? path)
+  public async Task<IActionResult> CreateWebHookExecutionWorkflow(string workflowId, string path)
   {
     var body = await new StreamReader(Request.Body).ReadToEndAsync();
     var triggerInput = new
@@ -21,8 +21,8 @@ public class WebhookController(IWorkflowEngine engine) : ControllerBase
       path = path
     };
 
-    await engine.StartExecutionAsync(workflowId, null, triggerInput);
+    var id = await engine.StartExecutionAsync(workflowId, triggerInput);
 
-    return Ok("OK"); // or depend on webhook node's response config
+    return Ok(id); // or depend on webhook node's response config
   }
 }
