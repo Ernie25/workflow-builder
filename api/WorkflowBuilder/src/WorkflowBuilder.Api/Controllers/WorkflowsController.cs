@@ -37,6 +37,24 @@ public sealed class WorkflowsController : ControllerBase
 
         return Ok(workflow);
     }
+    
+    [HttpPut("{id}")]
+    [ProducesResponseType(typeof(WorkflowResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> UpdateWorkflow(
+        string id, 
+        [FromBody] UpdateWorkflowRequest request, 
+        CancellationToken cancellationToken)
+    {
+        var workflow = await _workflowService.UpdateWorkflowAsync(id, request, cancellationToken);
+        
+        if (workflow == null)
+        {
+            return NotFound();
+        }
+
+        return Ok(workflow);
+    }
 }
 
 
