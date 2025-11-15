@@ -11,6 +11,8 @@ public sealed record ExecutionWorkflowResponse
   public string? Description { get; set; }
 
   public string WorkflowId { get; set; }
+
+  public Dictionary<string, object> Context { get; set; }
   
   public ExecutionStatus Status { get; set; }
   

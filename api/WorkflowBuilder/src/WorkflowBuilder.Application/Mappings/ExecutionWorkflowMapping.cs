@@ -15,6 +15,7 @@ public static class ExecutionWorkflowMapping
       WorkflowId = workflow.WorkflowId,
       FinishedAt = workflow.FinishedAt,
       StartedAt = workflow.StartedAt,
+      Context =  workflow.Context?.ToDictionary(),
       Status = workflow.Status,
       Steps = workflow.Steps.Select(q => q.ToResponse()).ToList(),
     };
@@ -26,7 +27,7 @@ public static class ExecutionWorkflowMapping
     {
       Name = node.Name,
       Status = node.Status,
-      Config = node.Config.ToDictionary(),
+      Config = node.Config?.ToDictionary(),
       Type = node.Type,
       StartedAt = node.StartedAt,
       FinishedAt = node.FinishedAt,

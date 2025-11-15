@@ -32,7 +32,7 @@ public sealed record ExecutionWorkflow
   
   [BsonElement("context")]
   [BsonIgnoreIfNull]
-  public object? Context { get; set; }
+  public BsonDocument? Context { get; set; }
 
   [BsonElement("steps")] 
   public IList<ExecutionNode> Steps { get; init; } = [];

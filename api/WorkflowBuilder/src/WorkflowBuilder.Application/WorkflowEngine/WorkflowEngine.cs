@@ -1,4 +1,5 @@
-﻿using WorkflowBuilder.Application.Mappings;
+﻿using MongoDB.Bson;
+using WorkflowBuilder.Application.Mappings;
 using WorkflowBuilder.Application.Models.Dtos;
 using WorkflowBuilder.Domain.Entities;
 using WorkflowBuilder.Domain.Entities.Enums;
@@ -54,6 +55,34 @@ public class WorkflowEngine(
     return stoppedNode.ToResponse();
   }
 
+  public async Task<ExecutionNodeResponse?> ContinueExecutionAsnyc(string workflowId, Dictionary<string, object>? context, CancellationToken ct)
+  {
+    var executionWorkflow = await executionRepo.GetAsync(workflowId, ct) ?? throw new InvalidOperationException("Workflow not found");
+    executionWorkflow.Status = ExecutionStatus.Running;
+    if (context is not null)
+    {
+      executionWorkflow.Context = DictionaryToBson(context);
+    }
+    var nodeFinished = executionWorkflow.Steps.First(q => q.Status == ExecutionStatus.Pending);
+    nodeFinished.Status = ExecutionStatus.Pending;
+    nodeFinished.FinishedAt = DateTime.UtcNow;
+    await executionRepo.UpdateAsync(executionWorkflow, ct);
+
+    var workflow = await workflowRepo.GetByIdAsync(executionWorkflow.WorkflowId, ct) ??  throw new InvalidOperationException("Workflow not found");
+    var nextNodeId = workflow.Connections.FirstOrDefault(q => q.From == nodeFinished.NodeId)?.To;
+
+    if (nextNodeId is null)
+    {
+      return null;
+    }
+    
+    var nextNode = workflow.Nodes.First(q => q.Id == nextNodeId);
+    
+    await ProcessNode(nextNode, executionWorkflow, ct);
+    
+    return nodeFinished.ToResponse();
+  }
+
   private async Task<ExecutionNode> ProcessNode(WorkflowNode node, ExecutionWorkflow execution, CancellationToken ct)
   {
     var executionNode = execution.Steps.First(s => s.NodeId == node.Id);
@@ -70,5 +99,11 @@ public class WorkflowEngine(
     await executionRepo.UpdateAsync(execution, ct);
     
     return executionNode;
+  }
+
+  private BsonDocument DictionaryToBson(Dictionary<string, object> dictionary)
+  {
+    var jsonDoc = Newtonsoft.Json.JsonConvert.SerializeObject(dictionary);
+    return MongoDB.Bson.Serialization.BsonSerializer.Deserialize<BsonDocument>(jsonDoc);
   }
 }

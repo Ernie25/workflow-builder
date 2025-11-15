@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Mvc;
+using MongoDB.Bson;
 using WorkflowBuilder.Application.Services.ExecutionWorkflows;
 using WorkflowBuilder.Application.WorkflowEngine;
 
@@ -29,5 +30,14 @@ public class ExecutionWorkflowsController(IWorkflowEngine engine, IExecutionWork
   {
     var workflows = await service.GetExecutionWorkflowAsync(workflowId, ct);
     return Ok(workflows);
+  }
+
+  [HttpPut]
+  [Route("{workflowId}/form-submit")]
+  public async Task<IActionResult> FormSubmitExecutionWorkflow(string workflowId, [FromBody] Dictionary<string, object> body, CancellationToken ct)
+  {
+    var id = await engine.ContinueExecutionAsnyc(workflowId, body, ct);
+    
+    return Ok(id);
   }
 }
