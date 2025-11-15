@@ -2,6 +2,7 @@
 
 public enum ExecutionStatus
 {
+  NotStarted,
   Pending,
   Running,
   Succeeded,

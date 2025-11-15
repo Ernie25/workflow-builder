@@ -1,5 +1,6 @@
 ﻿using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
+using WorkflowBuilder.Domain.Entities.Enums;
 
 namespace WorkflowBuilder.Domain.Entities;
 
@@ -7,30 +8,30 @@ public sealed record ExecutionNode
 {
   [BsonId]
   [BsonRepresentation(BsonType.ObjectId)]
-  public string Id { get; init; }
+  public string Id { get; set; }
   
   [BsonElement("executionId")]
-  public string ExecutionId { get; init; }
+  public string ExecutionId { get; set; }
 
   [BsonElement("nodeId")]
-  public string NodeId { get; init; }
+  public string NodeId { get; set; }
+  
+  [BsonElement("name")]
+  public string Name { get; set; }
+
+  [BsonElement("type")]
+  public string Type { get; set; }
+  
+  [BsonElement("config")]
+  public BsonDocument? Config { get; set; }
 
   [BsonElement("startedAt")]
-  public DateTime StartedAt { get; init; }
+  public DateTime StartedAt { get; set; }
 
   [BsonElement("finishedAt")]
   [BsonIgnoreIfNull]
-  public DateTime? FinishedAt { get; init; }
+  public DateTime? FinishedAt { get; set; }
 
   [BsonElement("status")]
-  public string Status { get; init; }
-
-  [BsonElement("input")]
-  public object? Input { get; init; }
-
-  [BsonElement("output")]
-  public object? Output { get; init; }
-
-  [BsonElement("error")]
-  public string? Error { get; init; }
+  public ExecutionStatus Status { get; set; }
 }
