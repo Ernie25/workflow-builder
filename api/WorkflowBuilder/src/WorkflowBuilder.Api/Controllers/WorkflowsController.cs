@@ -23,6 +23,14 @@ public sealed class WorkflowsController : ControllerBase
         return Ok(workflow);
     }
     
+    [HttpGet]
+    [ProducesResponseType(typeof(IEnumerable<WorkflowResponse>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetAllWorkflows(CancellationToken cancellationToken)
+    {
+        var workflows = await _workflowService.GetAllWorkflowsAsync(cancellationToken);
+        return Ok(workflows);
+    }
+    
     [HttpGet("{id}")]
     [ProducesResponseType(typeof(WorkflowResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
