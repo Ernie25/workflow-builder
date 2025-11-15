@@ -4,9 +4,11 @@ using Microsoft.Extensions.Options;
 using MongoDB.Driver;
 using WorkflowBuilder.Domain.Entities;
 using WorkflowBuilder.Domain.Repositories;
+using WorkflowBuilder.Domain.Services;
 using WorkflowBuilder.Infrastructure.Data;
 using WorkflowBuilder.Infrastructure.Options;
 using WorkflowBuilder.Infrastructure.Repositories;
+using WorkflowBuilder.Infrastructure.Services.Bedrock;
 using IWorkflowRepository = WorkflowBuilder.Domain.Repositories.IWorkflowRepository;
 
 namespace WorkflowBuilder.Infrastructure.Extensions;
@@ -19,12 +21,16 @@ public static class ServiceCollectionExtensions
         .AddConfigurations(configuration)
         .SetupMongoDb()
         .SetupCollections()
-        .AddRepositories();
+        .AddRepositories()
+        .AddBedrockServices(configuration);
     }
     
     private static IServiceCollection AddConfigurations(this IServiceCollection services, IConfiguration configuration)
     {
-      services.AddOptions<MongoDbConnectionOptions>().Bind(configuration.GetSection(nameof(MongoDbConnectionOptions)));
+      services.AddOptions<MongoDbConnectionOptions>()
+        .Bind(configuration.GetSection(nameof(MongoDbConnectionOptions)));
+      services.AddOptions<BedrockOptions>()
+        .Bind(configuration.GetSection(nameof(BedrockOptions)));
 
       return services;
     }
@@ -84,5 +90,27 @@ public static class ServiceCollectionExtensions
       services.AddScoped<IExecutionWorkflowRepository, ExecutionWorkflowRepository>();
       
       return services;
+    }
+
+    private static IServiceCollection AddBedrockServices(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        // TODO: Register AmazonBedrockRuntimeClient when implementing actual Bedrock integration
+        // services.AddSingleton<AmazonBedrockRuntimeClient>(sp =>
+        // {
+        //     var options = sp.GetRequiredService<IOptions<BedrockOptions>>().Value;
+        //     var config = new AmazonBedrockRuntimeConfig
+        //     {
+        //         RegionEndpoint = Amazon.RegionEndpoint.GetBySystemName(options.Region)
+        //     };
+        //     return new AmazonBedrockRuntimeClient(config);
+        // });
+
+        // Register Bedrock services
+        services.AddSingleton<PromptBuilder>();
+        services.AddScoped<IBedrockChatService, BedrockChatService>();
+
+        return services;
     }
 }
