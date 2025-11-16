@@ -1,4 +1,6 @@
-﻿using Microsoft.Extensions.Configuration;
+﻿using Amazon;
+using Amazon.BedrockRuntime;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using MongoDB.Driver;
@@ -96,16 +98,24 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        // TODO: Register AmazonBedrockRuntimeClient when implementing actual Bedrock integration
-        // services.AddSingleton<AmazonBedrockRuntimeClient>(sp =>
-        // {
-        //     var options = sp.GetRequiredService<IOptions<BedrockOptions>>().Value;
-        //     var config = new AmazonBedrockRuntimeConfig
-        //     {
-        //         RegionEndpoint = Amazon.RegionEndpoint.GetBySystemName(options.Region)
-        //     };
-        //     return new AmazonBedrockRuntimeClient(config);
-        // });
+        // Register AmazonBedrockRuntimeClient
+        services.AddSingleton<AmazonBedrockRuntimeClient>(sp =>
+        {
+            var options = sp.GetRequiredService<IOptions<BedrockOptions>>().Value;
+            
+            if (string.IsNullOrWhiteSpace(options.Region))
+            {
+                throw new InvalidOperationException("Bedrock region is not configured.");
+            }
+
+            var regionEndpoint = RegionEndpoint.GetBySystemName(options.Region);
+            var config = new AmazonBedrockRuntimeConfig
+            {
+                RegionEndpoint = regionEndpoint
+            };
+            
+            return new AmazonBedrockRuntimeClient(config);
+        });
 
         // Register Bedrock services
         services.AddSingleton<PromptBuilder>();

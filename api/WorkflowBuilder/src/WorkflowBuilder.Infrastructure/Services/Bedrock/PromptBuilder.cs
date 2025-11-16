@@ -42,7 +42,12 @@ Response Format (JSON):
 
     public string BuildPrompt(string userMessage, Workflow? workflow)
     {
-        var workflowContext = workflow != null
+      if (workflow is null) {
+
+      return userMessage;
+    }
+
+    var workflowContext = workflow != null
             ? $"\n\nCurrent Workflow Context:\n{JsonSerializer.Serialize(workflow, new JsonSerializerOptions { WriteIndented = true })}"
             : string.Empty;
 
