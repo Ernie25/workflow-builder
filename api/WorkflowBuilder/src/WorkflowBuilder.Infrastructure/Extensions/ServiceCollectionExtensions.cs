@@ -1,4 +1,6 @@
 using System.Security.Cryptography.X509Certificates;
+using Amazon;
+using Amazon.BedrockRuntime;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;

@@ -3,7 +3,8 @@
 import * as React from 'react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import { X, Send, Copy, Trash2, Loader2 } from 'lucide-react'
+import { X, Send, Copy, Trash2, Loader2, Webhook, FileText, Square, GitBranch } from 'lucide-react'
+import useApi from '@/hooks/use-api'
 
 // Context types
 type ChatContext = 'workflow_creation' | 'block_editing' | 'json_mode' | 'end_user_help'
@@ -18,13 +19,17 @@ interface Message {
 }
 
 // API Types
-type ChatClassification = 'Question' | 'WorkflowManagement'
+type ChatClassification = number
 
 interface ChatResponse {
-  classification: ChatClassification
-  responseMessage: string
+  classification?: ChatClassification  // camelCase (if API uses camelCase serialization)
+  Classification?: ChatClassification  // PascalCase (if API uses PascalCase serialization)
+  responseMessage?: string
+  ResponseMessage?: string
   workflow?: WorkflowResponse
+  Workflow?: WorkflowResponse
   suggestedActions?: string[]
+  SuggestedActions?: string[]
 }
 
 interface WorkflowResponse {
@@ -131,6 +136,7 @@ export function ChatPanel({
   className
 }: ChatPanelProps) {
   const config = contextConfig[context]
+  const { post } = useApi()
   const [messages, setMessages] = React.useState<Message[]>([])
   const [input, setInput] = React.useState('')
   const [isLoading, setIsLoading] = React.useState(false)
@@ -165,49 +171,74 @@ export function ChatPanel({
     setIsLoading(true)
 
     try {
-      // Call real API endpoint
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          message: messageContent,
-          workflowId: workflowId || undefined
-        })
+      // Call real API endpoint using useApi hook
+      const chatResponse: ChatResponse = await post('chat', {
+        message: messageContent,
+        workflowId: workflowId || undefined
       })
-
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`)
-      }
-
-      const chatResponse: ChatResponse = await response.json()
+      
+      console.log('[ChatPanel] Received chat response:', chatResponse)
+      
+      // Handle both camelCase and PascalCase serialization
+      const classification = chatResponse.classification || chatResponse.Classification
+      const responseMessage = chatResponse.responseMessage || chatResponse.ResponseMessage || 'No response message'
+      const workflow = chatResponse.workflow || chatResponse.Workflow
+      
+      console.log('[ChatPanel] Classification:', classification)
+      console.log('[ChatPanel] Has workflow:', !!workflow)
       
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: chatResponse.responseMessage,
+        content: responseMessage,
         timestamp: new Date(),
         hasCode: false
       }
 
       setMessages(prev => [...prev, assistantMessage])
 
-      // Handle WorkflowManagement classification - replace workflow
-      if (chatResponse.classification === 'WorkflowManagement' && chatResponse.workflow) {
-        // Convert API workflow format to UI format
-        const uiWorkflow = convertApiWorkflowToUI(chatResponse.workflow)
+      // Handle WorkflowManagement classification - MUST update workflow on canvas
+      // Check both camelCase and PascalCase to handle different serialization formats
+      const classificationStr = String(classification || '').toLowerCase()
+      const isWorkflowManagement = classification === 1
+      
+      console.log('[ChatPanel] Checking classification:', classification, 'isWorkflowManagement:', isWorkflowManagement)
+      
+      // If WorkflowManagement, MUST update the workflow
+      if (isWorkflowManagement) {
+        if (!workflow) {
+          console.error('[ChatPanel] ERROR: WorkflowManagement classification but no workflow in response!')
+          const errorMessage: Message = {
+            id: (Date.now() + 2).toString(),
+            role: 'assistant',
+            content: 'Error: WorkflowManagement response received but no workflow data was provided.',
+            timestamp: new Date()
+          }
+          setMessages(prev => [...prev, errorMessage])
+          return
+        }
         
-        // Trigger action callback to update workflow
+        console.log('[ChatPanel] Processing WorkflowManagement response - MUST update workflow')
+        console.log('[ChatPanel] Workflow data:', workflow)
+        
+        // Convert API workflow format to UI format
+        const uiWorkflow = convertApiWorkflowToUI(workflow, getIconForNodeType)
+        console.log('[ChatPanel] Converted workflow:', uiWorkflow)
+
+        // MUST trigger action callback to update workflow
         if (onAction) {
+          console.log('[ChatPanel] Calling onAction with workflow_update - UPDATING CANVAS')
+          console.log('[ChatPanel] Passing apiWorkflow:', workflow)
           onAction('workflow_update', {
             workflow: uiWorkflow,
-            apiWorkflow: chatResponse.workflow // Include original API format
+            apiWorkflow: workflow // Include original API format
           })
+          console.log('[ChatPanel] onAction called successfully')
+        } else {
+          console.error('[ChatPanel] CRITICAL ERROR: onAction callback is not provided - cannot update workflow!')
         }
-      } else if (onAction && chatResponse.suggestedActions && chatResponse.suggestedActions.length > 0) {
-        // Handle other actions if needed
-        onAction('suggested_actions', { actions: chatResponse.suggestedActions })
+      } else {
+        console.log('[ChatPanel] Not WorkflowManagement classification - no workflow update needed')
       }
     } catch (error) {
       console.error('Chat error:', error)
@@ -528,19 +559,41 @@ function LoadingIndicator() {
   )
 }
 
+// Helper function to get icon for node type (matches workflow page)
+function getIconForNodeType(nodeType: string, color: string): React.ReactNode {
+  switch (nodeType) {
+    case 'trigger':
+      return <Webhook className={cn("w-4 h-4", color)} />
+    case 'form':
+      return <FileText className={cn("w-4 h-4", color)} />
+    case 'action':
+      return <Square className={cn("w-4 h-4", color)} />
+    case 'decision':
+      return <GitBranch className={cn("w-4 h-4", color)} />
+    default:
+      return <Square className={cn("w-4 h-4", color)} />
+  }
+}
+
 // Convert API WorkflowResponse format to UI format
-function convertApiWorkflowToUI(apiWorkflow: WorkflowResponse): {
+// This matches the format used in workflow/[id]/page.tsx
+function convertApiWorkflowToUI(apiWorkflow: WorkflowResponse, getIconForNodeType: (nodeType: string, color: string) => React.ReactNode): {
   id: string
-  title: string
+  name: string
+  trigger?: {
+    type: string
+    nodeId: string
+  }
   nodes: Array<{
     id: string
-    x: number
-    y: number
+    type: string
+    name: string
+    position: { x: number; y: number }
     data: {
-      title: string
+      icon: React.ReactNode
       description?: string
-      status: string
-      nodeType: string
+      status?: string
+      [key: string]: any
     }
   }>
   connections: Array<{
@@ -552,60 +605,73 @@ function convertApiWorkflowToUI(apiWorkflow: WorkflowResponse): {
     label?: string
   }>
 } {
-  // Map API node types to UI node types
-  const mapNodeType = (apiType: string): string => {
-    const typeMap: Record<string, string> = {
-      'trigger': 'start',
-      'form': 'form',
-      'action': 'action',
-      'decision': 'decision',
-      'end': 'end'
-    }
-    return typeMap[apiType.toLowerCase()] || 'action'
-  }
+  // Block types for color mapping
+  const BLOCK_TYPES = [
+    { type: 'trigger', color: 'text-purple-500' },
+    { type: 'form', color: 'text-primary-500' },
+    { type: 'action', color: 'text-info-500' },
+    { type: 'decision', color: 'text-warning-500' }
+  ]
 
-  // Convert nodes
-  const nodes = apiWorkflow.nodes.map(node => ({
-    id: node.id,
-    x: node.position?.x || 0,
-    y: node.position?.y || 0,
-    data: {
-      title: node.name,
-      description: node.notes || '',
-      status: 'success', // Default status
-      nodeType: mapNodeType(node.type)
-    }
-  }))
-
-  // Convert connections
-  const connections = apiWorkflow.connections.map((conn, index) => {
-    let fromPort: 'output' | 'true' | 'false' = 'output'
-    let label: string | undefined
-
-    // Map condition type to fromPort
-    if (conn.condition) {
-      if (conn.condition.type === 'true') {
-        fromPort = 'true'
-        label = 'True'
-      } else if (conn.condition.type === 'false') {
-        fromPort = 'false'
-        label = 'False'
+  // Convert nodes - match the format from workflow page
+  const nodes = apiWorkflow.nodes.map((nodeDto) => {
+    const nodeType = nodeDto.type || 'action'
+    const blockType = BLOCK_TYPES.find(b => b.type === nodeType)
+    const color = blockType?.color || 'text-gray-500'
+    
+    return {
+      id: nodeDto.id,
+      type: nodeType,
+      name: nodeDto.name || 'Untitled',
+      position: nodeDto.position ? {
+        x: nodeDto.position.x,
+        y: nodeDto.position.y
+      } : { x: 0, y: 0 },
+      data: {
+        ...(nodeDto.config || {}),
+        icon: getIconForNodeType(nodeType, color),
+        description: nodeDto.notes || nodeDto.config?.description,
+        status: nodeDto.config?.status
       }
     }
+  })
 
-    return {
-      id: `conn-${conn.from}-${conn.to}-${index}`,
-      from: conn.from,
-      to: conn.to,
-      fromPort,
-      toPort: 'input' as const,
-      label
+  // Convert connections - match the format from workflow page
+  const connections = apiWorkflow.connections.map((connDto, index) => {
+    const connection: {
+      id: string
+      from: string
+      to: string
+      fromPort?: 'output' | 'true' | 'false'
+      toPort?: 'input'
+      label?: string
+    } = {
+      id: `conn-${Date.now()}-${connDto.from}-${connDto.to}-${Math.random().toString(36).substr(2, 9)}`,
+      from: connDto.from,
+      to: connDto.to
     }
+    
+    // Map condition back to fromPort for decision branches
+    if (connDto.condition) {
+      if (connDto.condition.type === 'success' || connDto.condition.type === 'true') {
+        connection.fromPort = 'true'
+      } else if (connDto.condition.type === 'failure' || connDto.condition.type === 'false') {
+        connection.fromPort = 'false'
+      }
+      connection.label = connDto.condition.expression
+    } else {
+      connection.fromPort = 'output'
+    }
+    
+    connection.toPort = 'input'
+    
+    return connection
   })
 
   return {
     id: apiWorkflow.id,
-    title: apiWorkflow.name,
+    name: apiWorkflow.name,
+    trigger: apiWorkflow.trigger,
     nodes,
     connections
   }
