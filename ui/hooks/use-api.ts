@@ -19,5 +19,21 @@ export default function useApi() {
     return response.json()
   }
 
-  return { apiUrl, fetcher, post }
+  const put = async (path: string, body?: any) => {
+    const response = await fetch(`${apiUrl}/${path}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    })
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+    
+    return response.json()
+  }
+
+  return { apiUrl, fetcher, post, put }
 }

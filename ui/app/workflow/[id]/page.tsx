@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import useSWR from 'swr'
 import { ArrowLeft, Save, Upload, ChevronLeft, ChevronRight, Webhook, Square, GitBranch, FileText, Box, Code, Maximize, CheckCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { WorkflowCanvas, type Node, type Connection } from '@/components/ui/workflow-canvas'
@@ -9,6 +10,7 @@ import { WorkflowNode } from '@/components/ui/workflow-node'
 import { ChatPanel } from '@/components/ChatPanel'
 import { JSONEditor } from '@/components/JSONEditor'
 import { cn } from '@/lib/utils'
+import useApi from '@/hooks/use-api'
 
 interface BlockType {
   type: 'trigger' | 'form' | 'action' | 'decision'
@@ -90,6 +92,11 @@ export default function WorkflowBuilderPage() {
   const [jsonData, setJsonData] = useState<any>({})
   const jsonEditorRef = useRef<{ format: () => void; validate: () => void } | null>(null)
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null)
+
+  // API hooks
+  const { fetcher, put } = useApi()
+  const { mutate: mutateWorkflow } = useSWR(`workflows/${workflowId}`, fetcher)
+  const { mutate: mutateWorkflowsList } = useSWR('workflows', fetcher)
 
   // Load workflow data on mount
   useEffect(() => {
@@ -176,65 +183,95 @@ export default function WorkflowBuilderPage() {
     }
   }, [nodes, connections, workflowId, workflowTitle, entrypointNodeId])
 
-  const handleSave = useCallback(() => {
+  const handleSave = useCallback(async () => {
     setIsSaving(true)
     
-    const nodesToSave = nodes.map(node => {
-      const { icon, ...dataWithoutIcon } = node.data || {}
-      return {
-        id: node.id,
-        type: node.type,
-        name: node.name,
-        position: node.position,
-        data: dataWithoutIcon,
-        description: node.data?.description
-      }
-    })
-    
-    const workflowData = {
-      id: workflowId,
-      name: workflowTitle,
-      title: workflowTitle,
-      trigger: {
-        type: 'manual',
-        nodeId: entrypointNodeId || ''
-      },
-      nodes: nodesToSave,
-      connections,
-      updatedAt: new Date().toISOString()
-    }
-    
-    localStorage.setItem(`workflow_${workflowId}`, JSON.stringify(workflowData))
-    
-    const allWorkflows = JSON.parse(localStorage.getItem('workflows') || '[]')
-    const workflowIndex = allWorkflows.findIndex((w: any) => w.id === workflowId)
-    
-    if (workflowIndex !== -1) {
-      allWorkflows[workflowIndex] = {
-        ...allWorkflows[workflowIndex],
+    try {
+      // Map UI nodes to API WorkflowNodeDto format
+      const nodesToSave = nodes.map(node => {
+        const { icon, ...dataWithoutIcon } = node.data || {}
+        return {
+          id: node.id,
+          type: node.type,
+          name: node.name,
+          position: node.position ? {
+            x: Math.round(node.position.x),
+            y: Math.round(node.position.y)
+          } : undefined,
+          config: dataWithoutIcon && Object.keys(dataWithoutIcon).length > 0 ? dataWithoutIcon : undefined,
+          notes: node.data?.description || undefined
+        }
+      })
+      
+      // Map UI connections to API WorkflowConnectionDto format
+      const connectionsToSave = connections.map(conn => {
+        const connection: any = {
+          from: conn.from,
+          to: conn.to
+        }
+        
+        // Map fromPort to condition if it's a decision branch
+        if (conn.fromPort && (conn.fromPort === 'true' || conn.fromPort === 'false')) {
+          connection.condition = {
+            type: conn.fromPort === 'true' ? 'success' : 'failure',
+            expression: conn.label || undefined
+          }
+        }
+        
+        return connection
+      })
+      
+      // Prepare the update request
+      const updateRequest: any = {
         name: workflowTitle,
-        description: `${nodes.length} blocks, ${connections.length} connections`,
-        updatedAt: new Date().toISOString()
+        description: `${nodes.length} blocks, ${connections.length} connections`
       }
-    } else {
-      allWorkflows.push({
+      
+      // Add trigger if entrypoint is set
+      if (entrypointNodeId) {
+        updateRequest.trigger = {
+          type: 'manual',
+          nodeId: entrypointNodeId
+        }
+      }
+      
+      // Add nodes and connections
+      updateRequest.nodes = nodesToSave
+      updateRequest.connections = connectionsToSave
+      
+      // Call PUT endpoint
+      await put(`workflows/${workflowId}`, updateRequest)
+      
+      // Refresh workflow data and workflows list
+      await Promise.all([
+        mutateWorkflow(),
+        mutateWorkflowsList()
+      ])
+      
+      // Also save to localStorage for backward compatibility
+      const workflowData = {
         id: workflowId,
         name: workflowTitle,
-        description: `${nodes.length} blocks, ${connections.length} connections`,
-        status: 'draft',
-        isPublished: false,
-        createdAt: new Date().toISOString(),
+        title: workflowTitle,
+        trigger: {
+          type: 'manual',
+          nodeId: entrypointNodeId || ''
+        },
+        nodes: nodesToSave,
+        connections: connectionsToSave,
         updatedAt: new Date().toISOString()
-      })
-    }
-    
-    localStorage.setItem('workflows', JSON.stringify(allWorkflows))
-    
-    setTimeout(() => {
+      }
+      
+      localStorage.setItem(`workflow_${workflowId}`, JSON.stringify(workflowData))
+      
       setIsSaving(false)
       alert('Workflow saved successfully!')
-    }, 500)
-  }, [workflowId, workflowTitle, nodes, connections, entrypointNodeId])
+    } catch (error) {
+      console.error('Failed to save workflow:', error)
+      setIsSaving(false)
+      alert('Failed to save workflow. Please try again.')
+    }
+  }, [workflowId, workflowTitle, nodes, connections, entrypointNodeId, put, mutateWorkflow, mutateWorkflowsList])
 
   const handlePublish = useCallback(() => {
     const nodesToSave = nodes.map(node => {
