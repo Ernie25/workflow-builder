@@ -32,68 +32,44 @@ export default function WorkflowPortal() {
   const [deleteModalId, setDeleteModalId] = useState<string | null>(null)
 
   const { fetcher, post } = useApi()
-  const { data: workflowsData, mutate } = useSWR('workflows', fetcher)
+  const { data: workflowsData, error: workflowsError, isLoading: isLoadingWorkflows, mutate } = useSWR('workflows', fetcher)
   const [isCreating, setIsCreating] = useState(false)
 
+  // Map API WorkflowResponse[] to UI Workflow[] format
   useEffect(() => {
-    const savedWorkflows = localStorage.getItem('workflows')
-    if (savedWorkflows) {
-      setWorkflows(JSON.parse(savedWorkflows))
-    } else {
-      const mockWorkflows: Workflow[] = [
-        {
-          id: '1',
-          name: 'Customer Onboarding',
-          description: 'Automated workflow for new customer registration and setup',
-          isPublished: true,
-          lastEdited: '2024-01-15',
-        },
-        {
-          id: '2',
-          name: 'Invoice Processing',
-          description: 'Automated invoice approval and payment processing',
-          isPublished: true,
-          lastEdited: '2024-01-14',
-        },
-        {
-          id: '3',
-          name: 'Employee Onboarding',
-          description: 'Streamlined new hire documentation and training workflow',
-          isPublished: false,
-          lastEdited: '2024-01-13',
-        },
-        {
-          id: '4',
-          name: 'Support Ticket Routing',
-          description: 'Intelligent routing of support tickets to appropriate teams',
-          isPublished: true,
-          lastEdited: '2024-01-12',
-        },
-        {
-          id: '5',
-          name: 'Marketing Campaign',
-          description: 'Multi-channel campaign automation with analytics',
-          isPublished: false,
-          lastEdited: '2024-01-11',
-        },
-      ]
-      setWorkflows(mockWorkflows)
-      localStorage.setItem('workflows', JSON.stringify(mockWorkflows))
+    if (workflowsData && Array.isArray(workflowsData)) {
+      const mappedWorkflows: Workflow[] = workflowsData.map((workflow: any) => ({
+        id: workflow.id,
+        name: workflow.name,
+        description: workflow.description || '',
+        isPublished: workflow.isPublished,
+        lastEdited: workflow.updatedAt 
+          ? new Date(workflow.updatedAt).toLocaleDateString('en-US', { 
+              year: 'numeric', 
+              month: '2-digit', 
+              day: '2-digit' 
+            })
+          : new Date().toLocaleDateString()
+      }))
+      setWorkflows(mappedWorkflows)
+    } else if (workflowsError) {
+      console.error('Failed to load workflows:', workflowsError)
+      // Fallback to empty array on error
+      setWorkflows([])
+    } else if (!isLoadingWorkflows && !workflowsData) {
+      // No data and not loading - set empty array
+      setWorkflows([])
     }
+  }, [workflowsData, workflowsError, isLoadingWorkflows])
 
+  // Load theme from localStorage
+  useEffect(() => {
     const savedTheme = localStorage.getItem('theme') as 'light' | 'dark' | null
     if (savedTheme) {
       setTheme(savedTheme)
       document.documentElement.classList.toggle('dark', savedTheme === 'dark')
     }
   }, [])
-
-  // Save workflows to localStorage whenever they change
-  useEffect(() => {
-    if (workflows.length > 0) {
-      localStorage.setItem('workflows', JSON.stringify(workflows))
-    }
-  }, [workflows])
 
   const toggleTheme = () => {
     const newTheme = theme === 'light' ? 'dark' : 'light'
@@ -327,7 +303,20 @@ export default function WorkflowPortal() {
 
           {/* Workflow List */}
           <div className="space-y-4 mt-16 lg:mt-4">
-            {filteredWorkflows.length === 0 ? (
+            {isLoadingWorkflows ? (
+              <div className="text-center py-16">
+                <p className="text-body text-slate-600 dark:text-[#D1D5DB]">Loading workflows...</p>
+              </div>
+            ) : workflowsError ? (
+              <div className="text-center py-16">
+                <p className="text-heading-m text-slate-900 dark:text-[#F3F4F6] mb-2">
+                  Failed to load workflows
+                </p>
+                <p className="text-body text-slate-600 dark:text-[#D1D5DB]">
+                  Please try refreshing the page
+                </p>
+              </div>
+            ) : filteredWorkflows.length === 0 ? (
               <div className="text-center py-16">
                 <p className="text-heading-m text-slate-900 dark:text-[#F3F4F6] mb-2">
                   {userRole === 'admin' ? 'No workflows yet' : 'No workflows available'}

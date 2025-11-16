@@ -9,6 +9,7 @@ import { WorkflowCanvas, type Node, type Connection } from '@/components/ui/work
 import { WorkflowNode } from '@/components/ui/workflow-node'
 import { ChatPanel } from '@/components/ChatPanel'
 import { JSONEditor } from '@/components/JSONEditor'
+import { Spinner } from '@/components/ui/spinner'
 import { cn } from '@/lib/utils'
 import useApi from '@/hooks/use-api'
 
@@ -95,34 +96,40 @@ export default function WorkflowBuilderPage() {
 
   // API hooks
   const { fetcher, put } = useApi()
-  const { mutate: mutateWorkflow } = useSWR(`workflows/${workflowId}`, fetcher)
+  const { data: workflowData, error: workflowError, isLoading: isLoadingWorkflow, mutate: mutateWorkflow } = useSWR(`workflows/${workflowId}`, fetcher)
   const { mutate: mutateWorkflowsList } = useSWR('workflows', fetcher)
 
-  // Load workflow data on mount
+  // Load workflow data from API or localStorage
   useEffect(() => {
-    // Load from localStorage or use default
-    const savedWorkflow = localStorage.getItem(`workflow_${workflowId}`)
-    
-    if (savedWorkflow) {
-      const data = JSON.parse(savedWorkflow)
-      setWorkflowTitle(data.name || 'Untitled Workflow')
-      setEntrypointNodeId(data.trigger?.nodeId || null)
+    if (isLoadingWorkflow) {
+      return // Wait for API to load
+    }
+
+    // Try to load from API first
+    if (workflowData) {
+      // Map API WorkflowResponse to UI format
+      setWorkflowTitle(workflowData.name || 'Untitled Workflow')
+      setEntrypointNodeId(workflowData.trigger?.nodeId || null)
       
-      const nodesWithIcons = (data.nodes || []).map((node: any) => {
-        const nodeType = node.type || 'action'
+      // Map WorkflowNodeDto[] to Node[]
+      const nodesWithIcons = (workflowData.nodes || []).map((nodeDto: any) => {
+        const nodeType = nodeDto.type || 'action'
         const blockType = BLOCK_TYPES.find(b => b.type === nodeType)
         const color = blockType?.color || 'text-gray-500'
         
         const convertedNode: Node = {
-          id: node.id,
+          id: nodeDto.id,
           type: nodeType,
-          name: node.name || 'Untitled',
-          position: node.position || { x: 0, y: 0 },
+          name: nodeDto.name || 'Untitled',
+          position: nodeDto.position ? {
+            x: nodeDto.position.x,
+            y: nodeDto.position.y
+          } : { x: 0, y: 0 },
           data: {
-            ...node.data,
+            ...(nodeDto.config || {}),
             icon: getIconForNodeType(nodeType, color),
-            description: node.description || node.data?.description,
-            status: node.data?.status
+            description: nodeDto.notes || nodeDto.config?.description,
+            status: nodeDto.config?.status
           }
         }
         
@@ -130,14 +137,100 @@ export default function WorkflowBuilderPage() {
       })
       
       setNodes(nodesWithIcons)
-      setConnections(data.connections || [])
+      
+      // Map WorkflowConnectionDto[] to Connection[]
+      const connectionsMapped = (workflowData.connections || []).map((connDto: any) => {
+        const connection: Connection = {
+          id: `conn-${Date.now()}-${connDto.from}-${connDto.to}-${Math.random().toString(36).substr(2, 9)}`,
+          from: connDto.from,
+          to: connDto.to
+        }
+        
+        // Map condition back to fromPort for decision branches
+        if (connDto.condition) {
+          if (connDto.condition.type === 'success' || connDto.condition.type === 'true') {
+            connection.fromPort = 'true'
+          } else if (connDto.condition.type === 'failure' || connDto.condition.type === 'false') {
+            connection.fromPort = 'false'
+          }
+          connection.label = connDto.condition.expression
+        } else {
+          connection.fromPort = 'output'
+        }
+        
+        connection.toPort = 'input'
+        
+        return connection
+      })
+      
+      setConnections(connectionsMapped)
+      
+      // Also save to localStorage for backward compatibility
+      const workflowDataForStorage = {
+        id: workflowData.id,
+        name: workflowData.name,
+        title: workflowData.name,
+        trigger: workflowData.trigger,
+        nodes: nodesWithIcons.map(node => ({
+          id: node.id,
+          type: node.type,
+          name: node.name,
+          position: node.position,
+          data: node.data,
+          description: node.data?.description
+        })),
+        connections: connectionsMapped,
+        updatedAt: workflowData.updatedAt
+      }
+      localStorage.setItem(`workflow_${workflowId}`, JSON.stringify(workflowDataForStorage))
+    } else if (workflowError) {
+      // If API fails, fallback to localStorage
+      console.warn('Failed to load workflow from API, falling back to localStorage:', workflowError)
+      const savedWorkflow = localStorage.getItem(`workflow_${workflowId}`)
+      
+      if (savedWorkflow) {
+        const data = JSON.parse(savedWorkflow)
+        setWorkflowTitle(data.name || 'Untitled Workflow')
+        setEntrypointNodeId(data.trigger?.nodeId || null)
+        
+        const nodesWithIcons = (data.nodes || []).map((node: any) => {
+          const nodeType = node.type || 'action'
+          const blockType = BLOCK_TYPES.find(b => b.type === nodeType)
+          const color = blockType?.color || 'text-gray-500'
+          
+          const convertedNode: Node = {
+            id: node.id,
+            type: nodeType,
+            name: node.name || 'Untitled',
+            position: node.position || { x: 0, y: 0 },
+            data: {
+              ...node.data,
+              icon: getIconForNodeType(nodeType, color),
+              description: node.description || node.data?.description,
+              status: node.data?.status
+            }
+          }
+          
+          return convertedNode
+        })
+        
+        setNodes(nodesWithIcons)
+        setConnections(data.connections || [])
+      } else {
+        // No data available, set defaults
+        setNodes([])
+        setConnections([])
+        setWorkflowTitle('Untitled Workflow')
+        setEntrypointNodeId(null)
+      }
     } else {
+      // No data and no error (might be a new workflow), set defaults
       setNodes([])
       setConnections([])
       setWorkflowTitle('Untitled Workflow')
       setEntrypointNodeId(null)
     }
-  }, [workflowId])
+  }, [workflowId, workflowData, workflowError, isLoadingWorkflow])
 
   useEffect(() => {
     if (nodes.length === 0) return
@@ -599,6 +692,16 @@ export default function WorkflowBuilderPage() {
   }, [selectedNodeId, connectingFrom])
 
   const formNodes = nodes.filter(node => node.type === 'form')
+
+  // Show loading state while fetching workflow
+  if (isLoadingWorkflow) {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center bg-gray-50 dark:bg-[#1A1A1A]">
+        <Spinner className="h-8 w-8 text-primary-500" />
+        <p className="mt-4 text-body text-gray-600 dark:text-gray-400">Loading workflow...</p>
+      </div>
+    )
+  }
 
   return (
     <div className="flex h-screen flex-col bg-gray-50 dark:bg-[#1A1A1A]">
