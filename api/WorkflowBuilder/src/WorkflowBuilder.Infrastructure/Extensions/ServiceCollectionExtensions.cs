@@ -1,13 +1,17 @@
-﻿using System.Security.Cryptography.X509Certificates;
+using System.Security.Cryptography.X509Certificates;
+using Amazon;
+using Amazon.BedrockRuntime;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using MongoDB.Driver;
 using WorkflowBuilder.Domain.Entities;
 using WorkflowBuilder.Domain.Repositories;
+using WorkflowBuilder.Domain.Services;
 using WorkflowBuilder.Infrastructure.Data;
 using WorkflowBuilder.Infrastructure.Options;
 using WorkflowBuilder.Infrastructure.Repositories;
+using WorkflowBuilder.Infrastructure.Services.Bedrock;
 using IWorkflowRepository = WorkflowBuilder.Domain.Repositories.IWorkflowRepository;
 
 namespace WorkflowBuilder.Infrastructure.Extensions;
@@ -20,12 +24,16 @@ public static class ServiceCollectionExtensions
         .AddConfigurations(configuration)
         .SetupMongoDb()
         .SetupCollections()
-        .AddRepositories();
+        .AddRepositories()
+        .AddBedrockServices(configuration);
     }
     
     private static IServiceCollection AddConfigurations(this IServiceCollection services, IConfiguration configuration)
     {
-      services.AddOptions<MongoDbConnectionOptions>().Bind(configuration.GetSection(nameof(MongoDbConnectionOptions)));
+      services.AddOptions<MongoDbConnectionOptions>()
+        .Bind(configuration.GetSection(nameof(MongoDbConnectionOptions)));
+      services.AddOptions<BedrockOptions>()
+        .Bind(configuration.GetSection(nameof(BedrockOptions)));
 
       return services;
     }
@@ -96,6 +104,36 @@ public static class ServiceCollectionExtensions
       services.AddScoped<IExecutionWorkflowRepository, ExecutionWorkflowRepository>();
       
       return services;
+    }
+
+    private static IServiceCollection AddBedrockServices(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        // Register AmazonBedrockRuntimeClient
+        services.AddSingleton<AmazonBedrockRuntimeClient>(sp =>
+        {
+            var options = sp.GetRequiredService<IOptions<BedrockOptions>>().Value;
+            
+            if (string.IsNullOrWhiteSpace(options.Region))
+            {
+                throw new InvalidOperationException("Bedrock region is not configured.");
+            }
+
+            var regionEndpoint = RegionEndpoint.GetBySystemName(options.Region);
+            var config = new AmazonBedrockRuntimeConfig
+            {
+                RegionEndpoint = regionEndpoint
+            };
+            
+            return new AmazonBedrockRuntimeClient(config);
+        });
+
+        // Register Bedrock services
+        services.AddSingleton<PromptBuilder>();
+        services.AddScoped<IBedrockChatService, BedrockChatService>();
+
+        return services;
     }
 
     private static MongoClient GetMongoClient()

@@ -1009,7 +1009,119 @@ export default function WorkflowBuilderPage() {
             workflowId={workflowId}
             onClose={() => setIsChatOpen(false)}
             onAction={(action, data) => {
-              console.log('[v0] Chat action:', action, data)
+              console.log('[WorkflowPage] Chat action received:', action)
+              console.log('[WorkflowPage] Action data:', data)
+              console.log('[WorkflowPage] Has apiWorkflow:', !!data?.apiWorkflow)
+              
+              // Handle workflow update from WorkflowManagement classification - MUST update canvas
+              if (action === 'workflow_update') {
+                if (!data?.apiWorkflow) {
+                  console.error('[WorkflowPage] ERROR: workflow_update action received but no apiWorkflow data!')
+                  return
+                }
+                
+                console.log('[WorkflowPage] Processing workflow_update action - UPDATING CANVAS')
+                const apiWorkflow = data.apiWorkflow
+                
+                // Preserve the workflow ID from the current workflow
+                const preservedId = workflowId
+                
+                // Convert API workflow to JSON format that handleJSONChange expects
+                const workflowJSON = {
+                  id: preservedId,
+                  name: apiWorkflow.name || workflowTitle,
+                  description: apiWorkflow.description || null,
+                  trigger: apiWorkflow.trigger || {
+                    type: 'manual',
+                    nodeId: ''
+                  },
+                  nodes: apiWorkflow.nodes.map((nodeDto: any) => ({
+                    id: nodeDto.id,
+                    type: nodeDto.type || 'action',
+                    name: nodeDto.name || 'Untitled',
+                    position: nodeDto.position || { x: 0, y: 0 },
+                    data: nodeDto.config || {},
+                    description: nodeDto.notes || nodeDto.config?.description
+                  })),
+                  connections: apiWorkflow.connections.map((connDto: any) => ({
+                    from: connDto.from,
+                    to: connDto.to,
+                    condition: connDto.condition ? {
+                      type: connDto.condition.type === 'success' || connDto.condition.type === 'true' ? 'true' : 
+                            connDto.condition.type === 'failure' || connDto.condition.type === 'false' ? 'false' : 
+                            connDto.condition.type,
+                      expression: connDto.condition.expression || null
+                    } : null
+                  })),
+                  isPublished: false,
+                  createdAt: apiWorkflow.createdAt || new Date().toISOString(),
+                  updatedAt: apiWorkflow.updatedAt || new Date().toISOString()
+                }
+                
+                // Use handleJSONChange to update the workflow (this handles all the conversion and updates canvas)
+                console.log('[WorkflowPage] Calling handleJSONChange to update canvas with workflow JSON')
+                handleJSONChange(workflowJSON)
+                console.log('[WorkflowPage] handleJSONChange called - canvas should be updated')
+                
+                // Also update JSON editor data
+                setJsonData(workflowJSON)
+                
+                // Save to API via PUT request
+                const nodesToSave = apiWorkflow.nodes.map((nodeDto: any) => ({
+                  id: nodeDto.id,
+                  type: nodeDto.type || 'action',
+                  name: nodeDto.name || 'Untitled',
+                  position: nodeDto.position ? {
+                    x: Math.round(nodeDto.position.x),
+                    y: Math.round(nodeDto.position.y)
+                  } : undefined,
+                  config: nodeDto.config && Object.keys(nodeDto.config).length > 0 ? nodeDto.config : undefined,
+                  notes: nodeDto.notes || undefined
+                }))
+                
+                const connectionsToSave = apiWorkflow.connections.map((connDto: any) => {
+                  const connection: any = {
+                    from: connDto.from,
+                    to: connDto.to
+                  }
+                  
+                  if (connDto.condition) {
+                    connection.condition = {
+                      type: connDto.condition.type === 'success' || connDto.condition.type === 'true' ? 'success' :
+                            connDto.condition.type === 'failure' || connDto.condition.type === 'false' ? 'failure' :
+                            connDto.condition.type,
+                      expression: connDto.condition.expression || undefined
+                    }
+                  }
+                  
+                  return connection
+                })
+                
+                const updateRequest: any = {
+                  name: apiWorkflow.name || workflowTitle,
+                  description: `${apiWorkflow.nodes.length} blocks, ${apiWorkflow.connections.length} connections`
+                }
+                
+                if (apiWorkflow.trigger) {
+                  updateRequest.trigger = apiWorkflow.trigger
+                }
+                
+                updateRequest.nodes = nodesToSave
+                updateRequest.connections = connectionsToSave
+                
+                // Save to API
+                put(`workflows/${preservedId}`, updateRequest)
+                  .then(() => {
+                    // Refresh workflow data
+                    mutateWorkflow()
+                    mutateWorkflowsList()
+                    
+                    console.log('[v0] Workflow updated from chat response, ID preserved:', preservedId)
+                  })
+                  .catch((error) => {
+                    console.error('[v0] Failed to save workflow update:', error)
+                  })
+              }
             }}
           />
         )}
