@@ -86,6 +86,7 @@ export default function WorkflowBuilderPage() {
   const [draggedBlockType, setDraggedBlockType] = useState<BlockType | null>(null)
   const [connectingFrom, setConnectingFrom] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
+  const [isPublishing, setIsPublishing] = useState(false)
   const [entrypointNodeId, setEntrypointNodeId] = useState<string | null>(null)
   const canvasContainerRef = useRef<HTMLDivElement>(null)
   const isDropProcessingRef = useRef(false)
@@ -95,7 +96,7 @@ export default function WorkflowBuilderPage() {
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null)
 
   // API hooks
-  const { fetcher, put } = useApi()
+  const { fetcher, put, post } = useApi()
   const { data: workflowData, error: workflowError, isLoading: isLoadingWorkflow, mutate: mutateWorkflow } = useSWR(`workflows/${workflowId}`, fetcher)
   const { mutate: mutateWorkflowsList } = useSWR('workflows', fetcher)
 
@@ -366,44 +367,94 @@ export default function WorkflowBuilderPage() {
     }
   }, [workflowId, workflowTitle, nodes, connections, entrypointNodeId, put, mutateWorkflow, mutateWorkflowsList])
 
-  const handlePublish = useCallback(() => {
-    const nodesToSave = nodes.map(node => {
-      const { icon, ...dataWithoutIcon } = node.data || {}
-      return {
-        id: node.id,
-        type: node.type,
-        name: node.name,
-        position: node.position,
-        data: dataWithoutIcon,
-        description: node.data?.description
+  const handlePublish = useCallback(async () => {
+    try {
+      setIsPublishing(true)
+      
+      // First, save the workflow to ensure it's up to date
+      const nodesToSave = nodes.map(node => {
+        const { icon, ...dataWithoutIcon } = node.data || {}
+        return {
+          id: node.id,
+          type: node.type,
+          name: node.name,
+          position: node.position ? {
+            x: Math.round(node.position.x),
+            y: Math.round(node.position.y)
+          } : undefined,
+          config: dataWithoutIcon && Object.keys(dataWithoutIcon).length > 0 ? dataWithoutIcon : undefined,
+          notes: node.data?.description || undefined
+        }
+      })
+      
+      const connectionsToSave = connections.map(conn => {
+        const connection: any = {
+          from: conn.from,
+          to: conn.to
+        }
+        
+        if (conn.fromPort && (conn.fromPort === 'true' || conn.fromPort === 'false')) {
+          connection.condition = {
+            type: conn.fromPort === 'true' ? 'success' : 'failure',
+            expression: conn.label || undefined
+          }
+        }
+        
+        return connection
+      })
+      
+      const updateRequest: any = {
+        name: workflowTitle,
+        description: `${nodes.length} blocks, ${connections.length} connections`
       }
-    })
-    
-    const workflowData = {
-      id: workflowId,
-      name: workflowTitle,
-      title: workflowTitle,
-      trigger: {
-        type: 'manual',
-        nodeId: entrypointNodeId || ''
-      },
-      nodes: nodesToSave,
-      connections,
-      isPublished: true,
-      publishedAt: new Date().toISOString()
+      
+      if (entrypointNodeId) {
+        updateRequest.trigger = {
+          type: 'manual',
+          nodeId: entrypointNodeId
+        }
+      }
+      
+      updateRequest.nodes = nodesToSave
+      updateRequest.connections = connectionsToSave
+      
+      // Save the workflow first
+      await put(`workflows/${workflowId}`, updateRequest)
+      
+      // Then publish it
+      await post(`workflows/${workflowId}/publish`)
+      
+      // Refresh workflow data and workflows list
+      await Promise.all([
+        mutateWorkflow(),
+        mutateWorkflowsList()
+      ])
+      
+      // Also save to localStorage for backward compatibility
+      const workflowData = {
+        id: workflowId,
+        name: workflowTitle,
+        title: workflowTitle,
+        trigger: {
+          type: 'manual',
+          nodeId: entrypointNodeId || ''
+        },
+        nodes: nodesToSave,
+        connections: connectionsToSave,
+        isPublished: true,
+        publishedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      }
+      localStorage.setItem(`workflow_${workflowId}`, JSON.stringify(workflowData))
+      
+      alert('Workflow published successfully!')
+    } catch (error) {
+      console.error('Failed to publish workflow:', error)
+      alert('Failed to publish workflow. Please try again.')
+    } finally {
+      setIsPublishing(false)
     }
-    localStorage.setItem(`workflow_${workflowId}`, JSON.stringify(workflowData))
-    
-    const allWorkflows = JSON.parse(localStorage.getItem('workflows') || '[]')
-    const index = allWorkflows.findIndex((w: any) => w.id === workflowId)
-    if (index !== -1) {
-      allWorkflows[index].isPublished = true
-      allWorkflows[index].status = 'published'
-      localStorage.setItem('workflows', JSON.stringify(allWorkflows))
-    }
-    
-    alert('Workflow published successfully!')
-  }, [workflowId, workflowTitle, nodes, connections, entrypointNodeId])
+  }, [workflowId, workflowTitle, nodes, connections, entrypointNodeId, put, post, mutateWorkflow, mutateWorkflowsList])
 
   const handleNodeMove = useCallback((nodeId: string, x: number, y: number) => {
     setNodes(prev => prev.map(node => 
@@ -763,9 +814,14 @@ export default function WorkflowBuilderPage() {
             <Save className="h-4 w-4" />
             {isSaving ? 'Saving...' : 'Save'}
           </Button>
-          <Button variant="primary" size="sm" onClick={handlePublish}>
+          <Button 
+            variant="primary" 
+            size="sm" 
+            onClick={handlePublish}
+            disabled={isPublishing}
+          >
             <Upload className="h-4 w-4" />
-            Publish
+            {isPublishing ? 'Publishing...' : 'Publish'}
           </Button>
         </div>
       </div>

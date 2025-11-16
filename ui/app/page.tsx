@@ -31,9 +31,10 @@ export default function WorkflowPortal() {
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [deleteModalId, setDeleteModalId] = useState<string | null>(null)
 
-  const { fetcher, post } = useApi()
+  const { fetcher, post, put } = useApi()
   const { data: workflowsData, error: workflowsError, isLoading: isLoadingWorkflows, mutate } = useSWR('workflows', fetcher)
   const [isCreating, setIsCreating] = useState(false)
+  const [publishingWorkflowId, setPublishingWorkflowId] = useState<string | null>(null)
 
   // Map API WorkflowResponse[] to UI Workflow[] format
   useEffect(() => {
@@ -78,12 +79,39 @@ export default function WorkflowPortal() {
     document.documentElement.classList.toggle('dark', newTheme === 'dark')
   }
 
-  const togglePublish = (id: string) => {
-    setWorkflows(
-      workflows.map((w) =>
-        w.id === id ? { ...w, isPublished: !w.isPublished } : w
-      )
-    )
+  const togglePublish = async (id: string) => {
+    const workflow = workflows.find((w) => w.id === id)
+    if (!workflow) return
+
+    try {
+      setPublishingWorkflowId(id)
+
+      if (!workflow.isPublished) {
+        // Publish workflow - call API
+        await post(`workflows/${id}/publish`)
+      } else {
+        // Unpublish - update via PUT (since there's no unpublish endpoint)
+        // We need to get the current workflow data and update it
+        // For now, we'll update local state since UpdateWorkflowRequest doesn't support IsPublished
+        // This maintains previous functionality
+        setWorkflows(
+          workflows.map((w) =>
+            w.id === id ? { ...w, isPublished: false } : w
+          )
+        )
+        // Refresh the list to sync with server
+        await mutate()
+        return
+      }
+
+      // Refresh the workflows list after successful publish
+      await mutate()
+    } catch (error) {
+      console.error('Failed to toggle publish status:', error)
+      alert('Failed to update workflow publish status. Please try again.')
+    } finally {
+      setPublishingWorkflowId(null)
+    }
   }
 
   const deleteWorkflow = (id: string) => {
@@ -382,10 +410,13 @@ export default function WorkflowPortal() {
                               e.stopPropagation()
                               togglePublish(workflow.id)
                             }}
-                            className="p-2 text-slate-400 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-slate-100 dark:hover:bg-gray-800 rounded-md transition-all opacity-0 group-hover:opacity-100"
+                            disabled={publishingWorkflowId === workflow.id}
+                            className="p-2 text-slate-400 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-slate-100 dark:hover:bg-gray-800 rounded-md transition-all opacity-0 group-hover:opacity-100 disabled:opacity-50 disabled:cursor-not-allowed"
                             title={workflow.isPublished ? 'Unpublish' : 'Publish'}
                           >
-                            {workflow.isPublished ? (
+                            {publishingWorkflowId === workflow.id ? (
+                              <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-400 border-t-transparent" />
+                            ) : workflow.isPublished ? (
                               <EyeOff className="h-5 w-5" />
                             ) : (
                               <Eye className="h-5 w-5" />
