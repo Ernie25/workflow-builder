@@ -1,6 +1,12 @@
 'use client'
 
-import { useRef, useState, useEffect, useCallback, type MouseEvent } from 'react'
+import React, {
+  useRef,
+  useState,
+  useEffect,
+  useCallback,
+  type MouseEvent,
+} from 'react'
 import { ZoomIn, ZoomOut, Maximize, RotateCcw } from 'lucide-react'
 import { ConnectionLine } from './connection-line'
 import { cn } from '@/lib/utils'
@@ -114,16 +120,21 @@ export function WorkflowCanvas({
     })
   }, [nodes])
 
-  const handleMouseDown = useCallback((e: MouseEvent<HTMLDivElement>) => {
-    const target = e.target as HTMLElement
-    const isCanvasBackground = target === canvasRef.current || target.closest('[data-canvas-background]')
-    
-    if (isCanvasBackground) {
-      e.preventDefault()
-      setIsPanning(true)
-      setPanStart({ x: e.clientX - pan.x, y: e.clientY - pan.y })
-    }
-  }, [pan])
+  const handleMouseDown = useCallback(
+    (e: MouseEvent<HTMLDivElement>) => {
+      const target = e.target as HTMLElement
+      const isCanvasBackground =
+        target === canvasRef.current ||
+        target.closest('[data-canvas-background]')
+
+      if (isCanvasBackground) {
+        e.preventDefault()
+        setIsPanning(true)
+        setPanStart({ x: e.clientX - pan.x, y: e.clientY - pan.y })
+      }
+    },
+    [pan]
+  )
 
   const handleMouseMove = useCallback(
     (e: MouseEvent<HTMLDivElement>) => {
@@ -153,7 +164,16 @@ export function WorkflowCanvas({
         onNodeMove?.(draggedNode, x, y)
       }
     },
-    [isPanning, panStart, draggedNode, pan, zoom, dragOffset, onNodeMove, connectingFrom]
+    [
+      isPanning,
+      panStart,
+      draggedNode,
+      pan,
+      zoom,
+      dragOffset,
+      onNodeMove,
+      connectingFrom,
+    ]
   )
 
   const handleMouseUp = useCallback(() => {
@@ -204,7 +224,7 @@ export function WorkflowCanvas({
         console.log('[v0] Skipping drag - clicked on button')
         return
       }
-      
+
       e.stopPropagation()
       const node = nodes.find((n) => n.id === nodeId)
       if (!node) return
@@ -273,13 +293,13 @@ export function WorkflowCanvas({
               if (!fromNode || !toNode) return null
 
               let fromY = fromNode.position.y + 50 // Default center
-              
+
               if (connection.fromPort === 'true') {
                 fromY = fromNode.position.y + 33 // Top third for true branch
               } else if (connection.fromPort === 'false') {
                 fromY = fromNode.position.y + 67 // Bottom third for false branch
               }
-              
+
               const fromX = fromNode.position.x + 200 // Right edge of node
               const toX = toNode.position.x // Left edge of node
               const toY = toNode.position.y + 50 // Port vertical center
@@ -296,7 +316,7 @@ export function WorkflowCanvas({
               )
             })}
 
-            {connectingFrom && (
+            {connectingFrom &&
               (() => {
                 const [fromNodeId, fromPort] = connectingFrom.split(':')
                 const fromNode = nodes.find((n) => n.id === fromNodeId)
@@ -317,15 +337,22 @@ export function WorkflowCanvas({
                     from={{ x: fromX, y: fromY }}
                     to={{ x: mousePosition.x, y: mousePosition.y }}
                     type="standard"
-                    label={fromPort === 'true' ? 'True' : fromPort === 'false' ? 'False' : undefined}
+                    label={
+                      fromPort === 'true'
+                        ? 'True'
+                        : fromPort === 'false'
+                        ? 'False'
+                        : undefined
+                    }
                   />
                 )
-              })()
-            )}
+              })()}
           </svg>
 
           {nodes.map((node, index) => {
-            const childrenArray = Array.isArray(children) ? children : [children]
+            const childrenArray = Array.isArray(children)
+              ? children
+              : [children]
             const nodeChild = childrenArray[index]
 
             const isSelected = selectedNodes.has(node.id)
@@ -339,22 +366,26 @@ export function WorkflowCanvas({
                   top: node.position.y,
                 }}
                 onMouseDown={(e) => handleNodeDragStart(node.id, e)}
-                onClick={(e) => handleNodeClick(node.id, e.ctrlKey || e.metaKey)}
+                onClick={(e) =>
+                  handleNodeClick(node.id, e.ctrlKey || e.metaKey)
+                }
                 className={cn(
-                  isSelected && 'ring-2 ring-primary-500 ring-offset-2 rounded-lg'
+                  isSelected &&
+                    'ring-2 ring-primary-500 ring-offset-2 rounded-lg'
                 )}
               >
-                {nodeChild && React.cloneElement(nodeChild as React.ReactElement, {
-                  onPortClick: (type: 'input' | 'output', port?: string) =>
-                    handlePortClickInternal(node.id, type, port),
-                })}
+                {nodeChild &&
+                  React.cloneElement(nodeChild as React.ReactElement, {
+                    onPortClick: (type: 'input' | 'output', port?: string) =>
+                      handlePortClickInternal(node.id, type, port),
+                  })}
               </div>
             )
           })}
         </div>
       </div>
 
-      <div 
+      <div
         className="absolute bottom-4 flex flex-col gap-2 z-50 transition-all duration-300"
         style={{ right: isChatOpen ? '366px' : '16px' }}
       >
@@ -430,8 +461,18 @@ export function WorkflowCanvas({
       <div className="absolute top-4 left-4 px-3 py-2 rounded-lg bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border border-gray-200 dark:border-gray-700 shadow-sm">
         <div className="text-[11px] text-gray-600 dark:text-gray-400 space-y-1">
           <div>Drag canvas to pan</div>
-          <div><kbd className="px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-[10px]">Ctrl</kbd> + Click for multi-select</div>
-          <div><kbd className="px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-[10px]">Del</kbd> to delete selected</div>
+          <div>
+            <kbd className="px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-[10px]">
+              Ctrl
+            </kbd>{' '}
+            + Click for multi-select
+          </div>
+          <div>
+            <kbd className="px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-[10px]">
+              Del
+            </kbd>{' '}
+            to delete selected
+          </div>
           {entrypointNodeId && (
             <div className="text-green-600 dark:text-green-400 font-medium">
               Entrypoint node has no input port
@@ -439,7 +480,11 @@ export function WorkflowCanvas({
           )}
           {connectingFrom && (
             <div className="text-primary-500 font-medium">
-              Click input port to connect • <kbd className="px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-[10px]">ESC</kbd> to cancel
+              Click input port to connect •{' '}
+              <kbd className="px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-[10px]">
+                ESC
+              </kbd>{' '}
+              to cancel
             </div>
           )}
         </div>
