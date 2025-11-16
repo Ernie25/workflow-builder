@@ -786,6 +786,60 @@ export default function WorkflowBuilderPage() {
             onClose={() => setIsChatOpen(false)}
             onAction={(action, data) => {
               console.log('[v0] Chat action:', action, data)
+              
+              // Handle workflow update from WorkflowManagement classification
+              if (action === 'workflow_update' && data.workflow) {
+                const updatedWorkflow = data.workflow
+                
+                // Preserve the workflow ID from the current workflow
+                const preservedId = workflowId
+                
+                // Update workflow title
+                if (updatedWorkflow.title) {
+                  setWorkflowTitle(updatedWorkflow.title)
+                }
+                
+                // Convert nodes to UI format with icons
+                if (updatedWorkflow.nodes) {
+                  const nodesWithIcons = updatedWorkflow.nodes.map((node: any) => {
+                    const nodeType = node.data.nodeType || 'action'
+                    const blockType = BLOCK_TYPES.find(b => b.type === nodeType)
+                    const color = blockType?.color || 'text-gray-500'
+                    
+                    return {
+                      ...node,
+                      data: {
+                        ...node.data,
+                        icon: getIconForNodeType(nodeType, color)
+                      }
+                    }
+                  })
+                  setNodes(nodesWithIcons)
+                }
+                
+                // Update connections
+                if (updatedWorkflow.connections) {
+                  setConnections(updatedWorkflow.connections)
+                }
+                
+                // Save to localStorage
+                const workflowData = {
+                  id: preservedId, // Preserve original workflow ID
+                  title: updatedWorkflow.title || workflowTitle,
+                  nodes: updatedWorkflow.nodes.map((node: any) => ({
+                    ...node,
+                    data: {
+                      ...node.data,
+                      icon: undefined // Remove icon for storage
+                    }
+                  })),
+                  connections: updatedWorkflow.connections,
+                  updatedAt: new Date().toISOString()
+                }
+                localStorage.setItem(`workflow_${preservedId}`, JSON.stringify(workflowData))
+                
+                console.log('[v0] Workflow updated from chat response, ID preserved:', preservedId)
+              }
             }}
           />
         )}

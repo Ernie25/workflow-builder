@@ -17,6 +17,53 @@ interface Message {
   hasCode?: boolean
 }
 
+// API Types
+type ChatClassification = 'Question' | 'WorkflowManagement'
+
+interface ChatResponse {
+  classification: ChatClassification
+  responseMessage: string
+  workflow?: WorkflowResponse
+  suggestedActions?: string[]
+}
+
+interface WorkflowResponse {
+  id: string
+  name: string
+  description?: string
+  trigger?: {
+    type: string
+    nodeId: string
+  }
+  nodes: WorkflowNodeDto[]
+  connections: WorkflowConnectionDto[]
+  createdAt: string
+  updatedAt: string
+}
+
+interface WorkflowNodeDto {
+  id: string
+  type: string
+  name: string
+  position?: {
+    x: number
+    y: number
+  }
+  credentials?: string
+  config?: Record<string, any>
+  runtime?: any
+  notes?: string
+}
+
+interface WorkflowConnectionDto {
+  from: string
+  to: string
+  condition?: {
+    type: string
+    expression?: string
+  }
+}
+
 // Props interface
 export interface ChatPanelProps {
   context: ChatContext
@@ -113,30 +160,54 @@ export function ChatPanel({
     }
 
     setMessages(prev => [...prev, userMessage])
+    const messageContent = input.trim()
     setInput('')
     setIsLoading(true)
 
-    // Mock API call - replace with real API
     try {
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 1000))
+      // Call real API endpoint
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: messageContent,
+          workflowId: workflowId || undefined
+        })
+      })
 
-      // Mock response based on context
-      const mockResponse = generateMockResponse(input, context)
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`)
+      }
+
+      const chatResponse: ChatResponse = await response.json()
       
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: mockResponse.content,
+        content: chatResponse.responseMessage,
         timestamp: new Date(),
-        hasCode: mockResponse.hasCode
+        hasCode: false
       }
 
       setMessages(prev => [...prev, assistantMessage])
 
-      // Trigger action callback if provided
-      if (onAction && mockResponse.action) {
-        onAction(mockResponse.action, mockResponse.data)
+      // Handle WorkflowManagement classification - replace workflow
+      if (chatResponse.classification === 'WorkflowManagement' && chatResponse.workflow) {
+        // Convert API workflow format to UI format
+        const uiWorkflow = convertApiWorkflowToUI(chatResponse.workflow)
+        
+        // Trigger action callback to update workflow
+        if (onAction) {
+          onAction('workflow_update', {
+            workflow: uiWorkflow,
+            apiWorkflow: chatResponse.workflow // Include original API format
+          })
+        }
+      } else if (onAction && chatResponse.suggestedActions && chatResponse.suggestedActions.length > 0) {
+        // Handle other actions if needed
+        onAction('suggested_actions', { actions: chatResponse.suggestedActions })
       }
     } catch (error) {
       console.error('Chat error:', error)
@@ -457,68 +528,85 @@ function LoadingIndicator() {
   )
 }
 
-// Mock response generator
-function generateMockResponse(
-  input: string,
-  context: ChatContext
-): { content: string; hasCode?: boolean; action?: string; data?: any } {
-  const lowerInput = input.toLowerCase()
-
-  // Context-specific responses
-  if (context === 'workflow_creation') {
-    if (lowerInput.includes('approval')) {
-      return {
-        content: 'I can help you add an approval step. Would you like to:\n\n1. Add a single approver\n2. Add multiple approvers (parallel)\n3. Add sequential approval chain\n\nWhich option works best for your workflow?',
-        action: 'suggest_approval_types',
-        data: { types: ['single', 'parallel', 'sequential'] }
-      }
+// Convert API WorkflowResponse format to UI format
+function convertApiWorkflowToUI(apiWorkflow: WorkflowResponse): {
+  id: string
+  title: string
+  nodes: Array<{
+    id: string
+    x: number
+    y: number
+    data: {
+      title: string
+      description?: string
+      status: string
+      nodeType: string
     }
-    if (lowerInput.includes('reorder')) {
-      return {
-        content: 'To reorder blocks, I can help you:\n\n• Move a specific block up or down\n• Swap two blocks\n• Reorganize multiple blocks\n\nWhich blocks would you like to reorder?'
-      }
+  }>
+  connections: Array<{
+    id: string
+    from: string
+    to: string
+    fromPort?: 'output' | 'true' | 'false'
+    toPort?: 'input'
+    label?: string
+  }>
+} {
+  // Map API node types to UI node types
+  const mapNodeType = (apiType: string): string => {
+    const typeMap: Record<string, string> = {
+      'trigger': 'start',
+      'form': 'form',
+      'action': 'action',
+      'decision': 'decision',
+      'end': 'end'
     }
+    return typeMap[apiType.toLowerCase()] || 'action'
   }
 
-  if (context === 'block_editing') {
-    if (lowerInput.includes('date')) {
-      return {
-        content: 'I\'ll add a date field to your form. Here\'s the configuration:\n\n```json\n{\n  "type": "date",\n  "label": "Select Date",\n  "required": false,\n  "format": "MM/DD/YYYY"\n}\n```\n\nWould you like to make this field required?',
-        hasCode: true,
-        action: 'add_field',
-        data: { fieldType: 'date' }
-      }
+  // Convert nodes
+  const nodes = apiWorkflow.nodes.map(node => ({
+    id: node.id,
+    x: node.position?.x || 0,
+    y: node.position?.y || 0,
+    data: {
+      title: node.name,
+      description: node.notes || '',
+      status: 'success', // Default status
+      nodeType: mapNodeType(node.type)
     }
-    if (lowerInput.includes('required')) {
-      return {
-        content: 'I\'ve marked the field as required. Users will now see a red asterisk (*) next to the field label and won\'t be able to submit the form without filling it in.',
-        action: 'update_field_required',
-        data: { required: true }
-      }
-    }
-  }
+  }))
 
-  if (context === 'json_mode') {
-    if (lowerInput.includes('error') || lowerInput.includes('fix')) {
-      return {
-        content: 'I found a syntax error on line 12. You\'re missing a comma after the "name" property.\n\nHere\'s the corrected JSON:\n\n```json\n{\n  "name": "Approval Workflow",\n  "blocks": [\n    {\n      "id": "block-1",\n      "type": "approval"\n    }\n  ]\n}\n```',
-        hasCode: true,
-        action: 'highlight_error',
-        data: { line: 12, column: 5 }
+  // Convert connections
+  const connections = apiWorkflow.connections.map((conn, index) => {
+    let fromPort: 'output' | 'true' | 'false' = 'output'
+    let label: string | undefined
+
+    // Map condition type to fromPort
+    if (conn.condition) {
+      if (conn.condition.type === 'true') {
+        fromPort = 'true'
+        label = 'True'
+      } else if (conn.condition.type === 'false') {
+        fromPort = 'false'
+        label = 'False'
       }
     }
-  }
 
-  if (context === 'end_user_help') {
-    if (lowerInput.includes('fill') || lowerInput.includes('help')) {
-      return {
-        content: 'I\'d be happy to help you fill out this form! Let me guide you through each field:\n\n1. **Full Name** - Enter your first and last name\n2. **Email** - Your contact email address\n3. **Department** - Select from the dropdown\n\nWhich field would you like help with?'
-      }
+    return {
+      id: `conn-${conn.from}-${conn.to}-${index}`,
+      from: conn.from,
+      to: conn.to,
+      fromPort,
+      toPort: 'input' as const,
+      label
     }
-  }
+  })
 
-  // Default response
   return {
-    content: `I understand you're asking about "${input}". I'm here to help with ${contextConfig[context].systemPrompt.toLowerCase()}. Could you provide more details about what you'd like to do?`
+    id: apiWorkflow.id,
+    title: apiWorkflow.name,
+    nodes,
+    connections
   }
 }
