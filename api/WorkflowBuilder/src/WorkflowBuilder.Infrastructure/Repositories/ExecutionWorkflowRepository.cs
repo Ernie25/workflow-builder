@@ -12,14 +12,24 @@ public class ExecutionWorkflowRepository(IMongoCollection<ExecutionWorkflow> col
     await collection.InsertOneAsync(execution, cancellationToken: ct);
     return execution;
   }
-
-  public Task UpdateAsync(ExecutionWorkflow execution, CancellationToken ct = default)
+  
+  public async Task<ExecutionWorkflow?> UpdateAsync(ExecutionWorkflow executionWorkflow, CancellationToken cancellationToken = default)
   {
-    throw new NotImplementedException();
+    var filter = Builders<ExecutionWorkflow>.Filter.Eq(w => w.Id, executionWorkflow.Id);
+    var result = await collection.ReplaceOneAsync(filter, executionWorkflow, cancellationToken: cancellationToken);
+        
+    return result.ModifiedCount > 0 ? executionWorkflow : null;
   }
 
-  public Task<ExecutionWorkflow?> GetAsync(Guid id, CancellationToken ct = default)
+  public async Task<ExecutionWorkflow?> GetAsync(string id, CancellationToken ct = default)
   {
-    throw new NotImplementedException();
+    var filter = Builders<ExecutionWorkflow>.Filter.Eq(w => w.Id, id);
+    return await collection.Find(filter).FirstOrDefaultAsync(ct);
+  }
+
+  public async Task<List<ExecutionWorkflow>> GetAllAsync(CancellationToken ct = default)
+  {
+    return await collection.Find(Builders<ExecutionWorkflow>.Filter.Empty)
+      .ToListAsync(ct);
   }
 }

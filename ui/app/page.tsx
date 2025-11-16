@@ -2,10 +2,13 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import useSWR from 'swr'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
-import { Plus, LayoutGrid, Settings, Moon, Sun, ChevronDown, Menu, X, Edit2, Trash2, Eye, EyeOff } from 'lucide-react'
+import { Plus, LayoutGrid, Settings, Moon, Sun, ChevronDown, Menu, X, Edit2, Trash2, Eye, EyeOff, Play, History } from 'lucide-react'
+
+import useApi from '@/hooks/use-api'
 
 interface Workflow {
   id: string
@@ -28,65 +31,46 @@ export default function WorkflowPortal() {
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [deleteModalId, setDeleteModalId] = useState<string | null>(null)
 
-  useEffect(() => {
-    const savedWorkflows = localStorage.getItem('workflows')
-    if (savedWorkflows) {
-      setWorkflows(JSON.parse(savedWorkflows))
-    } else {
-      const mockWorkflows: Workflow[] = [
-        {
-          id: '1',
-          name: 'Customer Onboarding',
-          description: 'Automated workflow for new customer registration and setup',
-          isPublished: true,
-          lastEdited: '2024-01-15',
-        },
-        {
-          id: '2',
-          name: 'Invoice Processing',
-          description: 'Automated invoice approval and payment processing',
-          isPublished: true,
-          lastEdited: '2024-01-14',
-        },
-        {
-          id: '3',
-          name: 'Employee Onboarding',
-          description: 'Streamlined new hire documentation and training workflow',
-          isPublished: false,
-          lastEdited: '2024-01-13',
-        },
-        {
-          id: '4',
-          name: 'Support Ticket Routing',
-          description: 'Intelligent routing of support tickets to appropriate teams',
-          isPublished: true,
-          lastEdited: '2024-01-12',
-        },
-        {
-          id: '5',
-          name: 'Marketing Campaign',
-          description: 'Multi-channel campaign automation with analytics',
-          isPublished: false,
-          lastEdited: '2024-01-11',
-        },
-      ]
-      setWorkflows(mockWorkflows)
-      localStorage.setItem('workflows', JSON.stringify(mockWorkflows))
-    }
+  const { fetcher, post, put } = useApi()
+  const { data: workflowsData, error: workflowsError, isLoading: isLoadingWorkflows, mutate } = useSWR('workflows', fetcher)
+  const [isCreating, setIsCreating] = useState(false)
+  const [publishingWorkflowId, setPublishingWorkflowId] = useState<string | null>(null)
 
+  // Map API WorkflowResponse[] to UI Workflow[] format
+  useEffect(() => {
+    if (workflowsData && Array.isArray(workflowsData)) {
+      const mappedWorkflows: Workflow[] = workflowsData.map((workflow: any) => ({
+        id: workflow.id,
+        name: workflow.name,
+        description: workflow.description || '',
+        isPublished: workflow.isPublished,
+        lastEdited: workflow.updatedAt 
+          ? new Date(workflow.updatedAt).toLocaleDateString('en-US', { 
+              year: 'numeric', 
+              month: '2-digit', 
+              day: '2-digit' 
+            })
+          : new Date().toLocaleDateString()
+      }))
+      setWorkflows(mappedWorkflows)
+    } else if (workflowsError) {
+      console.error('Failed to load workflows:', workflowsError)
+      // Fallback to empty array on error
+      setWorkflows([])
+    } else if (!isLoadingWorkflows && !workflowsData) {
+      // No data and not loading - set empty array
+      setWorkflows([])
+    }
+  }, [workflowsData, workflowsError, isLoadingWorkflows])
+
+  // Load theme from localStorage
+  useEffect(() => {
     const savedTheme = localStorage.getItem('theme') as 'light' | 'dark' | null
     if (savedTheme) {
       setTheme(savedTheme)
       document.documentElement.classList.toggle('dark', savedTheme === 'dark')
     }
   }, [])
-
-  // Save workflows to localStorage whenever they change
-  useEffect(() => {
-    if (workflows.length > 0) {
-      localStorage.setItem('workflows', JSON.stringify(workflows))
-    }
-  }, [workflows])
 
   const toggleTheme = () => {
     const newTheme = theme === 'light' ? 'dark' : 'light'
@@ -95,12 +79,39 @@ export default function WorkflowPortal() {
     document.documentElement.classList.toggle('dark', newTheme === 'dark')
   }
 
-  const togglePublish = (id: string) => {
-    setWorkflows(
-      workflows.map((w) =>
-        w.id === id ? { ...w, isPublished: !w.isPublished } : w
-      )
-    )
+  const togglePublish = async (id: string) => {
+    const workflow = workflows.find((w) => w.id === id)
+    if (!workflow) return
+
+    try {
+      setPublishingWorkflowId(id)
+
+      if (!workflow.isPublished) {
+        // Publish workflow - call API
+        await post(`workflows/${id}/publish`)
+      } else {
+        // Unpublish - update via PUT (since there's no unpublish endpoint)
+        // We need to get the current workflow data and update it
+        // For now, we'll update local state since UpdateWorkflowRequest doesn't support IsPublished
+        // This maintains previous functionality
+        setWorkflows(
+          workflows.map((w) =>
+            w.id === id ? { ...w, isPublished: false } : w
+          )
+        )
+        // Refresh the list to sync with server
+        await mutate()
+        return
+      }
+
+      // Refresh the workflows list after successful publish
+      await mutate()
+    } catch (error) {
+      console.error('Failed to toggle publish status:', error)
+      alert('Failed to update workflow publish status. Please try again.')
+    } finally {
+      setPublishingWorkflowId(null)
+    }
   }
 
   const deleteWorkflow = (id: string) => {
@@ -108,9 +119,46 @@ export default function WorkflowPortal() {
     setDeleteModalId(null)
   }
 
-  const createNewWorkflow = () => {
-    const newId = Date.now().toString()
-    router.push(`/workflow/${newId}`)
+  const createNewWorkflow = async () => {
+    try {
+      setIsCreating(true)
+      const newWorkflow = await post('workflows')
+      
+      // Refresh the workflows list
+      await mutate()
+      
+      // Navigate to the new workflow page
+      router.push(`/workflow/${newWorkflow.id}`)
+    } catch (error) {
+      console.error('Failed to create workflow:', error)
+      // You might want to show a toast/notification here
+      alert('Failed to create workflow. Please try again.')
+    } finally {
+      setIsCreating(false)
+    }
+  }
+
+  const executeWorkflow = (workflowId: string) => {
+    // Create a new execution
+    const execution = {
+      id: Date.now().toString(),
+      workflowId: workflowId,
+      name: workflows.find(w => w.id === workflowId)?.name || 'Workflow',
+      description: workflows.find(w => w.id === workflowId)?.description || '',
+      status: 'notStarted',
+      startedAt: new Date().toISOString(),
+      finishedAt: null,
+      context: {}
+    }
+
+    // Save execution to localStorage
+    const existingExecutions = localStorage.getItem(`executions_${workflowId}`)
+    const executions = existingExecutions ? JSON.parse(existingExecutions) : []
+    executions.push(execution)
+    localStorage.setItem(`executions_${workflowId}`, JSON.stringify(executions))
+
+    // Navigate to the workflow run page
+    router.push(`/workflow/${workflowId}/run`)
   }
 
   const filteredWorkflows = userRole === 'admin' 
@@ -274,15 +322,29 @@ export default function WorkflowPortal() {
                 icon={<Plus className="h-4 w-4" />} 
                 variant="primary"
                 onClick={createNewWorkflow}
+                disabled={isCreating}
               >
-                Create New Workflow
+                {isCreating ? 'Creating...' : 'Create New Workflow'}
               </Button>
             </div>
           )}
 
           {/* Workflow List */}
           <div className="space-y-4 mt-16 lg:mt-4">
-            {filteredWorkflows.length === 0 ? (
+            {isLoadingWorkflows ? (
+              <div className="text-center py-16">
+                <p className="text-body text-slate-600 dark:text-[#D1D5DB]">Loading workflows...</p>
+              </div>
+            ) : workflowsError ? (
+              <div className="text-center py-16">
+                <p className="text-heading-m text-slate-900 dark:text-[#F3F4F6] mb-2">
+                  Failed to load workflows
+                </p>
+                <p className="text-body text-slate-600 dark:text-[#D1D5DB]">
+                  Please try refreshing the page
+                </p>
+              </div>
+            ) : filteredWorkflows.length === 0 ? (
               <div className="text-center py-16">
                 <p className="text-heading-m text-slate-900 dark:text-[#F3F4F6] mb-2">
                   {userRole === 'admin' ? 'No workflows yet' : 'No workflows available'}
@@ -298,8 +360,9 @@ export default function WorkflowPortal() {
                     variant="primary"
                     className="mt-6"
                     onClick={createNewWorkflow}
+                    disabled={isCreating}
                   >
-                    Create Workflow
+                    {isCreating ? 'Creating...' : 'Create Workflow'}
                   </Button>
                 )}
               </div>
@@ -347,10 +410,13 @@ export default function WorkflowPortal() {
                               e.stopPropagation()
                               togglePublish(workflow.id)
                             }}
-                            className="p-2 text-slate-400 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-slate-100 dark:hover:bg-gray-800 rounded-md transition-all opacity-0 group-hover:opacity-100"
+                            disabled={publishingWorkflowId === workflow.id}
+                            className="p-2 text-slate-400 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-slate-100 dark:hover:bg-gray-800 rounded-md transition-all opacity-0 group-hover:opacity-100 disabled:opacity-50 disabled:cursor-not-allowed"
                             title={workflow.isPublished ? 'Unpublish' : 'Publish'}
                           >
-                            {workflow.isPublished ? (
+                            {publishingWorkflowId === workflow.id ? (
+                              <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-400 border-t-transparent" />
+                            ) : workflow.isPublished ? (
                               <EyeOff className="h-5 w-5" />
                             ) : (
                               <Eye className="h-5 w-5" />
@@ -376,18 +442,56 @@ export default function WorkflowPortal() {
                           >
                             <Trash2 className="h-5 w-5" />
                           </button>
+                          {workflow.isPublished && (
+                            <>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  executeWorkflow(workflow.id)
+                                }}
+                                className="p-2 text-slate-400 hover:text-success-600 dark:hover:text-success-400 hover:bg-slate-100 dark:hover:bg-gray-800 rounded-md transition-all opacity-0 group-hover:opacity-100"
+                                title="Execute Workflow"
+                              >
+                                <Play className="h-5 w-5" />
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  router.push(`/workflow/${workflow.id}/executions`)
+                                }}
+                                className="p-2 text-slate-400 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-slate-100 dark:hover:bg-gray-800 rounded-md transition-all opacity-0 group-hover:opacity-100"
+                                title="View Executions"
+                              >
+                                <History className="h-5 w-5" />
+                              </button>
+                            </>
+                          )}
                         </>
                       ) : (
-                        <Button 
-                          variant="secondary" 
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            router.push(`/workflow/${workflow.id}/run`)
-                          }}
-                        >
-                          Open
-                        </Button>
+                        <div className="flex gap-2">
+                          <Button 
+                            variant="primary" 
+                            size="sm"
+                            icon={<Play className="h-4 w-4" />}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              executeWorkflow(workflow.id)
+                            }}
+                          >
+                            Execute
+                          </Button>
+                          <Button 
+                            variant="secondary" 
+                            size="sm"
+                            icon={<History className="h-4 w-4" />}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              router.push(`/workflow/${workflow.id}/executions`)
+                            }}
+                          >
+                            Executions
+                          </Button>
+                        </div>
                       )}
                     </div>
                   </div>

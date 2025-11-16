@@ -1,4 +1,6 @@
+using System.Net;
 using System.Reflection;
+using Microsoft.AspNetCore.Server.Kestrel.Https;
 using Scalar.AspNetCore;
 using WorkflowBuilder.Api.Extensions;
 using WorkflowBuilder.Application.Extensions;
@@ -14,22 +16,29 @@ builder.Configuration
     .AddUserSecrets(Assembly.GetExecutingAssembly());
 
 builder.Services
-    .AddApiDependencies()
-    .AddApplicationDependencies()
-    .AddInfrastructureDependencies(builder.Configuration);
+  .AddApiDependencies()
+  .AddApplicationDependencies()
+  .AddInfrastructureDependencies(builder.Configuration);
+
+builder.Services.AddCors(options =>
+{
+  options.AddPolicy(
+    "AllowAll",
+    builder => builder.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader()
+  );
+});
 
 var app = builder.Build();
 
-if (!EnvironmentExtensions.IsProductionEnvironment())
-{
-    app.MapOpenApi();
-    app.MapScalarApiReference();
-}
+app.MapOpenApi();
+app.MapScalarApiReference();
 
 app.UseHttpsRedirection();
 
 app.UseAuthorization();
 
 app.MapControllers();
+
+app.UseCors("AllowAll");
 
 app.Run();

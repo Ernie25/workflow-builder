@@ -1,9 +1,13 @@
-﻿namespace WorkflowBuilder.Application.WorkflowEngine;
+﻿using WorkflowBuilder.Application.Models.Dtos;
+using WorkflowBuilder.Domain.Entities;
+
+namespace WorkflowBuilder.Application.WorkflowEngine;
 
 public interface IWorkflowEngine
 {
-  Task<string> StartExecutionAsync(
+  Task<ExecutionNodeResponse> StartExecutionAsync(
     string workflowId,
-    object? triggerInput,
     CancellationToken ct = default);
+
+  Task<ExecutionNodeResponse?> ContinueExecutionAsnyc(string workflowId, Dictionary<string, object>? context, CancellationToken ct);
 }

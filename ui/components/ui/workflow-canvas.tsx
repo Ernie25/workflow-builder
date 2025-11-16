@@ -13,11 +13,14 @@ import { cn } from '@/lib/utils'
 
 export interface Node {
   id: string
-  x: number
-  y: number
-  data: {
-    title: string
-    icon: React.ReactNode
+  type: string
+  name: string
+  position: {
+    x: number
+    y: number
+  }
+  data?: {
+    icon?: React.ReactNode
     description?: string
     status?: 'pending' | 'success' | 'error' | 'running'
   }
@@ -44,6 +47,7 @@ export interface WorkflowCanvasProps {
   children?: React.ReactNode | React.ReactNode[]
   onNodeDelete?: (nodeIds: string[]) => void
   isChatOpen?: boolean
+  entrypointNodeId?: string | null // Added entrypointNodeId prop
 }
 
 export function WorkflowCanvas({
@@ -58,6 +62,7 @@ export function WorkflowCanvas({
   children,
   onNodeDelete,
   isChatOpen = false,
+  entrypointNodeId = null,
 }: WorkflowCanvasProps) {
   const canvasRef = useRef<HTMLDivElement>(null)
   const [zoom, setZoom] = useState(1)
@@ -88,10 +93,10 @@ export function WorkflowCanvas({
     const padding = 50
     const bounds = nodes.reduce(
       (acc, node) => ({
-        minX: Math.min(acc.minX, node.x),
-        minY: Math.min(acc.minY, node.y),
-        maxX: Math.max(acc.maxX, node.x + 200), // Node width
-        maxY: Math.max(acc.maxY, node.y + 150), // Approximate node height
+        minX: Math.min(acc.minX, node.position.x),
+        minY: Math.min(acc.minY, node.position.y),
+        maxX: Math.max(acc.maxX, node.position.x + 200), // Node width
+        maxY: Math.max(acc.maxY, node.position.y + 150), // Approximate node height
       }),
       { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity }
     )
@@ -230,8 +235,8 @@ export function WorkflowCanvas({
       console.log('[v0] Starting node drag:', nodeId)
       setDraggedNode(nodeId)
       setDragOffset({
-        x: (e.clientX - rect.left - pan.x) / zoom - node.x,
-        y: (e.clientY - rect.top - pan.y) / zoom - node.y,
+        x: (e.clientX - rect.left - pan.x) / zoom - node.position.x,
+        y: (e.clientY - rect.top - pan.y) / zoom - node.position.y,
       })
     },
     [nodes, pan, zoom]
@@ -287,17 +292,17 @@ export function WorkflowCanvas({
 
               if (!fromNode || !toNode) return null
 
-              let fromY = fromNode.y + 50 // Default center
+              let fromY = fromNode.position.y + 50 // Default center
 
               if (connection.fromPort === 'true') {
-                fromY = fromNode.y + 33 // Top third for true branch
+                fromY = fromNode.position.y + 33 // Top third for true branch
               } else if (connection.fromPort === 'false') {
-                fromY = fromNode.y + 67 // Bottom third for false branch
+                fromY = fromNode.position.y + 67 // Bottom third for false branch
               }
 
-              const fromX = fromNode.x + 200 // Right edge of node
-              const toX = toNode.x // Left edge of node
-              const toY = toNode.y + 50 // Port vertical center
+              const fromX = fromNode.position.x + 200 // Right edge of node
+              const toX = toNode.position.x // Left edge of node
+              const toY = toNode.position.y + 50 // Port vertical center
 
               return (
                 <ConnectionLine
@@ -318,14 +323,14 @@ export function WorkflowCanvas({
                 if (!fromNode) return null
 
                 // Calculate position based on port
-                let fromY = fromNode.y + 50
+                let fromY = fromNode.position.y + 50
                 if (fromPort === 'true') {
-                  fromY = fromNode.y + 33
+                  fromY = fromNode.position.y + 33
                 } else if (fromPort === 'false') {
-                  fromY = fromNode.y + 67
+                  fromY = fromNode.position.y + 67
                 }
 
-                const fromX = fromNode.x + 200
+                const fromX = fromNode.position.x + 200
 
                 return (
                   <ConnectionLine
@@ -357,8 +362,8 @@ export function WorkflowCanvas({
                 key={node.id}
                 style={{
                   position: 'absolute',
-                  left: node.x,
-                  top: node.y,
+                  left: node.position.x,
+                  top: node.position.y,
                 }}
                 onMouseDown={(e) => handleNodeDragStart(node.id, e)}
                 onClick={(e) =>
@@ -468,6 +473,11 @@ export function WorkflowCanvas({
             </kbd>{' '}
             to delete selected
           </div>
+          {entrypointNodeId && (
+            <div className="text-green-600 dark:text-green-400 font-medium">
+              Entrypoint node has no input port
+            </div>
+          )}
           {connectingFrom && (
             <div className="text-primary-500 font-medium">
               Click input port to connect •{' '}

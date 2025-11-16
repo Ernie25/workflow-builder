@@ -8,25 +8,32 @@ public sealed record ExecutionWorkflow
 {
   [BsonId]
   [BsonRepresentation(BsonType.ObjectId)]
-  public string Id { get; init; }
+  public string Id { get; set; }
   
   [BsonElement("workflowId")]
-  public string WorkflowId { get; init; }
+  public string WorkflowId { get; set; }
+  
+  [BsonElement("name")]
+  public string Name { get; set; }
+  
+  [BsonElement("description")]
+  [BsonIgnoreIfNull]
+  public string? Description { get; set; }
   
   [BsonElement("status")]
-  public ExecutionStatus Status { get; init; }
+  public ExecutionStatus Status { get; set; }
   
   [BsonElement("startedAt")]
-  public DateTime StartedAt { get; init; }
+  public DateTime StartedAt { get; set; }
   
   [BsonElement("finishedAt")]
   [BsonIgnoreIfNull]
-  public DateTime? FinishedAt { get; init; }
+  public DateTime? FinishedAt { get; set; }
   
   [BsonElement("context")]
   [BsonIgnoreIfNull]
-  public object? Context { get; init; }
-  
-  [BsonElement("steps")]
-  public IReadOnlyList<ExecutionNode> Steps { get; init; }
+  public BsonDocument? Context { get; set; }
+
+  [BsonElement("steps")] 
+  public IList<ExecutionNode> Steps { get; init; } = [];
 };

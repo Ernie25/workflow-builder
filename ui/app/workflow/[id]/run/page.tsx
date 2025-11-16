@@ -33,11 +33,13 @@ interface FormButton {
 
 interface WorkflowBlock {
   id: string
-  type: 'start' | 'form' | 'action' | 'decision' | 'end'
-  label: string
-  config?: {
+  type: 'trigger' | 'form' | 'action' | 'decision'
+  name: string
+  position: { x: number; y: number }
+  data?: {
     fields?: FormField[]
     buttons?: FormButton[]
+    [key: string]: any
   }
 }
 
@@ -46,6 +48,10 @@ interface WorkflowData {
   name: string
   nodes: WorkflowBlock[]
   connections: any[]
+  trigger?: {
+    type: string
+    nodeId: string
+  }
 }
 
 interface WorkflowState {
@@ -94,11 +100,15 @@ export default function WorkflowRunPage() {
           setFormValues(state.formData[state.currentBlockId] || {})
         }
       } else {
-        // Initialize new workflow run - start at first form block
-        const firstFormBlock = workflowData.nodes.find(n => {
-          // Check if node has config with fields (indicating it's a form)
-          return n.data?.nodeType === 'form' || (n.data?.config?.fields && n.data.config.fields.length > 0)
-        })
+        let firstFormBlock: WorkflowBlock | undefined
+        
+        if (workflowData.trigger?.nodeId) {
+          // Use the entrypoint node specified in trigger
+          firstFormBlock = workflowData.nodes.find(n => n.id === workflowData.trigger!.nodeId)
+        } else {
+          // Fallback to first form node
+          firstFormBlock = workflowData.nodes.find(n => n.type === 'form')
+        }
         
         console.log('[v0] First form block:', firstFormBlock)
         
@@ -110,13 +120,7 @@ export default function WorkflowRunPage() {
             status: 'in_progress'
           }
           setWorkflowState(initialState)
-          const blockData: WorkflowBlock = {
-            id: firstFormBlock.id,
-            type: 'form',
-            label: firstFormBlock.data.label || 'Form',
-            config: firstFormBlock.data.config
-          }
-          setCurrentBlock(blockData)
+          setCurrentBlock(firstFormBlock)
           sessionStorage.setItem(`workflow_run_${workflowId}`, JSON.stringify(initialState))
         } else {
           console.error('[v0] No form blocks found in workflow')
@@ -124,84 +128,8 @@ export default function WorkflowRunPage() {
         }
       }
     } else {
-      console.log('[v0] No workflow data found, checking portal workflows list')
-      const portalWorkflows = localStorage.getItem('workflows')
-      
-      if (portalWorkflows) {
-        const workflows = JSON.parse(portalWorkflows)
-        const mockWorkflow = workflows.find((w: any) => w.id === workflowId)
-        
-        if (mockWorkflow) {
-          console.log('[v0] Found mock workflow, creating default form structure')
-          // Create a default form structure for mock workflows
-          const defaultWorkflowData: WorkflowData = {
-            id: workflowId,
-            name: mockWorkflow.name,
-            nodes: [
-              {
-                id: 'form-1',
-                type: 'form',
-                label: mockWorkflow.name,
-                data: {
-                  nodeType: 'form',
-                  label: mockWorkflow.name,
-                  config: {
-                    fields: [
-                      {
-                        id: 'field-1',
-                        type: 'text',
-                        label: 'Full Name',
-                        required: true,
-                        placeholder: 'Enter your full name'
-                      },
-                      {
-                        id: 'field-2',
-                        type: 'email',
-                        label: 'Email',
-                        required: true,
-                        placeholder: 'your.email@example.com'
-                      },
-                      {
-                        id: 'field-3',
-                        type: 'phone',
-                        label: 'Phone Number',
-                        required: false,
-                        placeholder: '(123) 456-7890'
-                      }
-                    ],
-                    buttons: []
-                  }
-                }
-              }
-            ],
-            connections: []
-          }
-          
-          setWorkflow(defaultWorkflowData)
-          
-          // Initialize workflow state
-          const initialState: WorkflowState = {
-            currentBlockId: 'form-1',
-            formData: {},
-            completedBlocks: [],
-            status: 'in_progress'
-          }
-          setWorkflowState(initialState)
-          
-          const blockData: WorkflowBlock = {
-            id: 'form-1',
-            type: 'form',
-            label: mockWorkflow.name,
-            config: defaultWorkflowData.nodes[0].data.config
-          }
-          setCurrentBlock(blockData)
-          sessionStorage.setItem(`workflow_run_${workflowId}`, JSON.stringify(initialState))
-        } else {
-          console.error('[v0] Workflow not found in portal list either')
-        }
-      } else {
-        console.error('[v0] No workflow found in localStorage')
-      }
+      console.log('[v0] No workflow data found')
+      setNoFormError(true)
     }
   }, [workflowId])
 
@@ -246,12 +174,12 @@ export default function WorkflowRunPage() {
 
   // Validate all fields
   const validateAllFields = (): boolean => {
-    if (!currentBlock?.config?.fields) return true
+    if (!currentBlock?.data?.fields) return true
 
     const errors: Record<string, string> = {}
     let hasErrors = false
 
-    currentBlock.config.fields.forEach(field => {
+    currentBlock.data.fields.forEach(field => {
       const error = validateField(field, formValues[field.id])
       if (error) {
         errors[field.id] = error
@@ -289,20 +217,14 @@ export default function WorkflowRunPage() {
       completedBlocks: [...workflowState!.completedBlocks, currentBlock!.id]
     }
 
-    const formBlocks = workflow!.nodes.filter(n => n.data?.nodeType === 'form' || (n.data?.config?.fields && n.data.config.fields.length > 0))
+    const formBlocks = workflow!.nodes.filter(n => n.type === 'form')
     const currentIndex = formBlocks.findIndex(b => b.id === currentBlock!.id)
     const nextNode = formBlocks[currentIndex + 1]
 
     if (nextNode) {
       newState.currentBlockId = nextNode.id
       setWorkflowState(newState)
-      const nextBlock: WorkflowBlock = {
-        id: nextNode.id,
-        type: 'form',
-        label: nextNode.data.label || 'Form',
-        config: nextNode.data.config
-      }
-      setCurrentBlock(nextBlock)
+      setCurrentBlock(nextNode)
       setFormValues(newState.formData[nextNode.id] || {})
       sessionStorage.setItem(`workflow_run_${workflowId}`, JSON.stringify(newState))
       setUnsavedChanges(false)
@@ -313,7 +235,7 @@ export default function WorkflowRunPage() {
 
   // Navigate to previous block
   const handlePrevious = () => {
-    const formBlocks = workflow!.nodes.filter(n => n.data?.nodeType === 'form' || (n.data?.config?.fields && n.data.config.fields.length > 0))
+    const formBlocks = workflow!.nodes.filter(n => n.type === 'form')
     const currentIndex = formBlocks.findIndex(b => b.id === currentBlock!.id)
     const previousNode = formBlocks[currentIndex - 1]
 
@@ -323,13 +245,7 @@ export default function WorkflowRunPage() {
         currentBlockId: previousNode.id
       }
       setWorkflowState(newState)
-      const prevBlock: WorkflowBlock = {
-        id: previousNode.id,
-        type: 'form',
-        label: previousNode.data.label || 'Form',
-        config: previousNode.data.config
-      }
-      setCurrentBlock(prevBlock)
+      setCurrentBlock(previousNode)
       setFormValues(newState.formData[previousNode.id] || {})
       sessionStorage.setItem(`workflow_run_${workflowId}`, JSON.stringify(newState))
     }
@@ -370,7 +286,7 @@ export default function WorkflowRunPage() {
   const getProgress = () => {
     if (!workflow || !workflowState) return { current: 0, total: 0, percentage: 0 }
     
-    const formBlocks = workflow.nodes.filter(n => n.data?.nodeType === 'form' || (n.data?.config?.fields && n.data.config.fields.length > 0))
+    const formBlocks = workflow.nodes.filter(n => n.type === 'form')
     const current = formBlocks.findIndex(b => b.id === currentBlock?.id) + 1
     const total = formBlocks.length
     const percentage = (workflowState.completedBlocks.length / total) * 100
@@ -583,11 +499,11 @@ export default function WorkflowRunPage() {
 
           {/* Form Container */}
           <div className="mx-auto max-w-2xl rounded-lg border border-slate-200 bg-white p-8 shadow-sm">
-            <h2 className="text-heading-l mb-6 text-slate-900">{currentBlock.label}</h2>
+            <h2 className="text-heading-l mb-6 text-slate-900">{currentBlock.name}</h2>
             
             {/* Form Fields */}
             <div className="space-y-6">
-              {currentBlock.config?.fields?.map(renderField)}
+              {currentBlock.data?.fields?.map(renderField)}
             </div>
 
             {/* Form Buttons */}

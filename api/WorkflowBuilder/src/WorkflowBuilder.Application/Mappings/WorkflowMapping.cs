@@ -18,7 +18,8 @@ public static class WorkflowMapping
             Nodes = workflow.Nodes.Select(n => n.ToDto()).ToList(),
             Connections = workflow.Connections.Select(c => c.ToDto()).ToList(),
             CreatedAt = workflow.CreatedAt,
-            UpdatedAt = workflow.UpdatedAt
+            UpdatedAt = workflow.UpdatedAt,
+            IsPublished = workflow.IsPublished
         };
     }
 

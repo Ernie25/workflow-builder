@@ -7,23 +7,24 @@ import { cn } from '@/lib/utils'
 
 export interface WorkflowNodeProps {
   id: string
-  title: string
+  name: string
   icon: ReactNode
   description?: string
   status?: 'pending' | 'success' | 'error' | 'running'
   selected?: boolean
   onDragStart?: (e: DragEvent<HTMLDivElement>) => void
-  onPortClick?: (type: 'input' | 'output', port?: string) => void // Added port parameter for decision branches
+  onPortClick?: (type: 'input' | 'output', port?: string) => void
   onDelete?: () => void
   onEdit?: () => void
   isConnecting?: boolean
-  nodeType?: 'start' | 'form' | 'action' | 'decision' | 'end'
+  nodeType?: 'trigger' | 'form' | 'action' | 'decision'
+  isEntrypoint?: boolean
   className?: string
 }
 
 export function WorkflowNode({
   id,
-  title,
+  name,
   icon,
   description,
   status,
@@ -34,6 +35,7 @@ export function WorkflowNode({
   onEdit,
   isConnecting = false,
   nodeType = 'action',
+  isEntrypoint = false,
   className,
 }: WorkflowNodeProps) {
   const [isHovered, setIsHovered] = useState(false)
@@ -86,8 +88,9 @@ export function WorkflowNode({
       onDoubleClick={handleDoubleClick}
       onContextMenu={handleContextMenu}
       className={cn(
-        'relative w-[200px] rounded-md bg-white dark:bg-[#252525] border transition-all duration-150',
+        'relative w-[200px] rounded-md border transition-all duration-150',
         'cursor-move select-none',
+        isEntrypoint ? 'bg-green-50 dark:bg-green-950' : 'bg-white dark:bg-[#252525]',
         !selected && !isHovered && 'border-gray-200 dark:border-gray-700 shadow-sm',
         isHovered && !selected && 'border-primary-500 shadow-md',
         selected && 'border-2 border-primary-500 shadow-lg ring-2 ring-primary-500/20',
@@ -95,8 +98,8 @@ export function WorkflowNode({
         className
       )}
     >
-      {/* Input Port */}
-      {nodeType !== 'start' && (
+      {/* Input Port - all nodes can receive connections */}
+      {!isEntrypoint && (
         <button
           onClick={(e) => handlePortClickInternal(e, 'input')}
           onMouseDown={(e) => {
@@ -112,6 +115,7 @@ export function WorkflowNode({
         />
       )}
 
+      {/* Output Ports - decision nodes have two, others have one */}
       {nodeType === 'decision' ? (
         <>
           {/* True Output Port */}
@@ -148,7 +152,7 @@ export function WorkflowNode({
             title="False"
           />
         </>
-      ) : nodeType !== 'end' && (
+      ) : (
         <button
           onClick={(e) => handlePortClickInternal(e, 'output')}
           onMouseDown={(e) => {
@@ -174,10 +178,10 @@ export function WorkflowNode({
             {icon}
           </div>
 
-          {/* Title and Status */}
+          {/* Name and Status */}
           <div className="flex-1 min-w-0">
             <h3 className="text-[14px] font-semibold text-gray-900 dark:text-gray-100 truncate">
-              {title}
+              {name}
             </h3>
             {status && (
               <div className="mt-1">
@@ -229,11 +233,7 @@ export function WorkflowNode({
           <div className="my-1 border-t border-gray-200 dark:border-gray-700" />
           <button
             onClick={handleDeleteClick}
-            className={cn(
-              'w-full px-3 py-1.5 text-left text-[13px] text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950 transition-colors flex items-center gap-2',
-              title === 'Start' && 'opacity-50 cursor-not-allowed'
-            )}
-            disabled={title === 'Start'}
+            className="w-full px-3 py-1.5 text-left text-[13px] text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950 transition-colors flex items-center gap-2"
           >
             <Trash2 className="w-3.5 h-3.5" />
             Delete Block
