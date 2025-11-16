@@ -1,11 +1,13 @@
 'use client'
 
+'use client'
+
 import { cva, type VariantProps } from 'class-variance-authority'
-import { type ReactNode } from 'react'
+import { type ReactNode, cloneElement, isValidElement } from 'react'
 import { CheckCircle2, XCircle, AlertTriangle, Clock, Loader2 } from 'lucide-react'
 
 const badgeVariants = cva(
-  'inline-flex items-center gap-2 rounded-full font-medium transition-all duration-150',
+  'inline-flex items-center gap-1 rounded-full font-medium transition-all duration-150',
   {
     variants: {
       status: {
@@ -27,7 +29,7 @@ const badgeVariants = cva(
   }
 )
 
-const iconVariants = cva('flex-shrink-0', {
+const iconVariants = cva('flex-shrink-0 flex items-center justify-center', {
   variants: {
     size: {
       sm: 'w-3 h-3',
@@ -56,11 +58,19 @@ export interface BadgeProps extends VariantProps<typeof badgeVariants> {
 
 export function Badge({ status, text, icon, size, className }: BadgeProps) {
   const displayIcon = icon !== undefined ? icon : defaultIcons[status]
+  const iconSize = size === 'sm' ? 'w-3 h-3' : 'w-3.5 h-3.5'
+
 
   return (
     <span className={badgeVariants({ status, size, className })}>
       {displayIcon && (
-        <span className={iconVariants({ size })}>{displayIcon}</span>
+          <span className={iconVariants({ size })}>
+          {isValidElement(displayIcon)
+              ? cloneElement(displayIcon as React.ReactElement<{ className?: string }>, {
+                className: `${iconSize} ${(displayIcon as React.ReactElement<{ className?: string }>).props?.className || ''}`.trim(),
+              })
+              : displayIcon}
+        </span>
       )}
       {text && <span>{text}</span>}
     </span>
