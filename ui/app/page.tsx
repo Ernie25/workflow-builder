@@ -31,9 +31,9 @@ export default function WorkflowPortal() {
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [deleteModalId, setDeleteModalId] = useState<string | null>(null)
 
-  const { fetcher } = useApi()
-  const workflowsResponse = useSWR('workflows', fetcher)
-  console.log(workflowsResponse)
+  const { fetcher, post } = useApi()
+  const { data: workflowsData, mutate } = useSWR('workflows', fetcher)
+  const [isCreating, setIsCreating] = useState(false)
 
   useEffect(() => {
     const savedWorkflows = localStorage.getItem('workflows')
@@ -115,9 +115,23 @@ export default function WorkflowPortal() {
     setDeleteModalId(null)
   }
 
-  const createNewWorkflow = () => {
-    const newId = Date.now().toString()
-    router.push(`/workflow/${newId}`)
+  const createNewWorkflow = async () => {
+    try {
+      setIsCreating(true)
+      const newWorkflow = await post('workflows')
+      
+      // Refresh the workflows list
+      await mutate()
+      
+      // Navigate to the new workflow page
+      router.push(`/workflow/${newWorkflow.id}`)
+    } catch (error) {
+      console.error('Failed to create workflow:', error)
+      // You might want to show a toast/notification here
+      alert('Failed to create workflow. Please try again.')
+    } finally {
+      setIsCreating(false)
+    }
   }
 
   const executeWorkflow = (workflowId: string) => {
@@ -304,8 +318,9 @@ export default function WorkflowPortal() {
                 icon={<Plus className="h-4 w-4" />} 
                 variant="primary"
                 onClick={createNewWorkflow}
+                disabled={isCreating}
               >
-                Create New Workflow
+                {isCreating ? 'Creating...' : 'Create New Workflow'}
               </Button>
             </div>
           )}
@@ -328,8 +343,9 @@ export default function WorkflowPortal() {
                     variant="primary"
                     className="mt-6"
                     onClick={createNewWorkflow}
+                    disabled={isCreating}
                   >
-                    Create Workflow
+                    {isCreating ? 'Creating...' : 'Create Workflow'}
                   </Button>
                 )}
               </div>
