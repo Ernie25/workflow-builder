@@ -2,10 +2,13 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import useSWR from 'swr'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import { Plus, LayoutGrid, Settings, Moon, Sun, ChevronDown, Menu, X, Edit2, Trash2, Eye, EyeOff, Play, History } from 'lucide-react'
+
+import useApi from '@/hooks/use-api'
 
 interface Workflow {
   id: string
@@ -27,6 +30,10 @@ export default function WorkflowPortal() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [deleteModalId, setDeleteModalId] = useState<string | null>(null)
+
+  const { fetcher } = useApi()
+  const workflowsResponse = useSWR('workflows', fetcher)
+  console.log(workflowsResponse)
 
   useEffect(() => {
     const savedWorkflows = localStorage.getItem('workflows')

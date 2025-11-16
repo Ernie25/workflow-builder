@@ -20,6 +20,14 @@ builder.Services
   .AddApplicationDependencies()
   .AddInfrastructureDependencies(builder.Configuration);
 
+builder.Services.AddCors(options =>
+{
+  options.AddPolicy(
+    "AllowAll",
+    builder => builder.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader()
+  );
+});
+
 var app = builder.Build();
 
 app.MapOpenApi();
@@ -30,5 +38,7 @@ app.UseHttpsRedirection();
 app.UseAuthorization();
 
 app.MapControllers();
+
+app.UseCors("AllowAll");
 
 app.Run();
