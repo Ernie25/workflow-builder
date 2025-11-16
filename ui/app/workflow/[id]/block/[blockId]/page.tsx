@@ -35,24 +35,15 @@ export default function BlockEditorPage() {
       const node = workflow.nodes?.find((n: any) => n.id === blockId)
       
       if (node) {
-        const detectedType = node.data?.nodeType || 'form'
+        const detectedType = node.type || 'action'
         setBlockType(detectedType)
-        setBlockName(node.data?.title || 'Untitled Block')
+        setBlockName(node.name || 'Untitled Block')
+        setBlockData(node.data || {})
       } else {
-        setBlockType('form')
+        setBlockType('action')
       }
     } else {
-      setBlockType('form')
-    }
-
-    const savedBlocks = localStorage.getItem('workflow_blocks')
-    if (savedBlocks) {
-      const blocks = JSON.parse(savedBlocks)
-      const block = blocks[blockId]
-      if (block) {
-        setBlockName(block.name || blockName)
-        setBlockData(block.data || {})
-      }
+      setBlockType('action')
     }
   }, [blockId, workflowId])
 
@@ -73,27 +64,45 @@ export default function BlockEditorPage() {
 
   const handleSave = () => {
     setIsSaving(true)
-    const savedBlocks = localStorage.getItem('workflow_blocks') || '{}'
-    const blocks = JSON.parse(savedBlocks)
-    blocks[blockId] = {
-      id: blockId,
-      name: blockName,
-      type: blockType,
-      data: blockData,
-      updatedAt: new Date().toISOString()
+    
+    const savedWorkflow = localStorage.getItem(`workflow_${workflowId}`)
+    if (savedWorkflow) {
+      const workflow = JSON.parse(savedWorkflow)
+      const nodeIndex = workflow.nodes?.findIndex((n: any) => n.id === blockId)
+      
+      if (nodeIndex !== -1) {
+        workflow.nodes[nodeIndex].data = blockData
+        workflow.nodes[nodeIndex].name = blockName
+        workflow.updatedAt = new Date().toISOString()
+        localStorage.setItem(`workflow_${workflowId}`, JSON.stringify(workflow))
+      }
     }
-    localStorage.setItem('workflow_blocks', JSON.stringify(blocks))
     
     setTimeout(() => {
       setIsSaving(false)
       setHasUnsavedChanges(false)
       alert('Block saved successfully!')
-    }, 500)
+    }, 300)
   }
 
   const handleDataChange = (newData: any) => {
     setBlockData(newData)
     setHasUnsavedChanges(true)
+    
+    const savedWorkflow = localStorage.getItem(`workflow_${workflowId}`)
+    if (savedWorkflow) {
+      const workflow = JSON.parse(savedWorkflow)
+      const nodeIndex = workflow.nodes?.findIndex((n: any) => n.id === blockId)
+      
+      if (nodeIndex !== -1) {
+        workflow.nodes[nodeIndex].data = {
+          ...workflow.nodes[nodeIndex].data,
+          ...newData
+        }
+        workflow.updatedAt = new Date().toISOString()
+        localStorage.setItem(`workflow_${workflowId}`, JSON.stringify(workflow))
+      }
+    }
   }
 
   const handleJSONChange = React.useCallback((newData: any) => {

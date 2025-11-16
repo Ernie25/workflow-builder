@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { ArrowLeft, Save, Upload, ChevronLeft, ChevronRight, Play, Square, GitBranch, Flag, FileText, Box, Code, Maximize, CheckCircle } from 'lucide-react'
+import { ArrowLeft, Save, Upload, ChevronLeft, ChevronRight, Webhook, Square, GitBranch, FileText, Box, Code, Maximize, CheckCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { WorkflowCanvas, type Node, type Connection } from '@/components/ui/workflow-canvas'
 import { WorkflowNode } from '@/components/ui/workflow-node'
@@ -10,9 +10,8 @@ import { ChatPanel } from '@/components/ChatPanel'
 import { JSONEditor } from '@/components/JSONEditor'
 import { cn } from '@/lib/utils'
 
-// Block type definitions
 interface BlockType {
-  type: 'start' | 'form' | 'action' | 'decision' | 'end'
+  type: 'trigger' | 'form' | 'action' | 'decision'
   label: string
   icon: React.ReactNode
   color: string
@@ -20,16 +19,10 @@ interface BlockType {
 
 const BLOCK_TYPES: BlockType[] = [
   {
-    type: 'start',
-    label: 'Start',
-    icon: <Play className="w-4 h-4" />,
-    color: 'text-success-500'
-  },
-  {
-    type: 'form',
-    label: 'Form',
-    icon: <FileText className="w-4 h-4" />,
-    color: 'text-primary-500'
+    type: 'trigger',
+    label: 'Trigger / Webhook',
+    icon: <Webhook className="w-4 h-4" />,
+    color: 'text-purple-500'
   },
   {
     type: 'action',
@@ -38,16 +31,16 @@ const BLOCK_TYPES: BlockType[] = [
     color: 'text-info-500'
   },
   {
-    type: 'decision',
-    label: 'Decision',
-    icon: <GitBranch className="w-4 h-4" />,
-    color: 'text-warning-500'
+    type: 'form',
+    label: 'Form',
+    icon: <FileText className="w-4 h-4" />,
+    color: 'text-primary-500'
   },
   {
-    type: 'end',
-    label: 'End',
-    icon: <Flag className="w-4 h-4" />,
-    color: 'text-error-500'
+    type: 'decision',
+    label: 'Decision / Conditional',
+    icon: <GitBranch className="w-4 h-4" />,
+    color: 'text-warning-500'
   }
 ]
 
@@ -55,23 +48,21 @@ export interface Connection {
   id: string
   from: string
   to: string
-  fromPort?: 'output' | 'true' | 'false' // Added true/false for decision branches
+  fromPort?: 'output' | 'true' | 'false'
   toPort?: 'input'
-  label?: string // Added label for decision branches
+  label?: string
 }
 
 function getIconForNodeType(nodeType: string, color: string) {
   switch (nodeType) {
-    case 'start':
-      return <Play className={cn("w-4 h-4", color)} />
+    case 'trigger':
+      return <Webhook className={cn("w-4 h-4", color)} />
     case 'form':
       return <FileText className={cn("w-4 h-4", color)} />
     case 'action':
       return <Square className={cn("w-4 h-4", color)} />
     case 'decision':
       return <GitBranch className={cn("w-4 h-4", color)} />
-    case 'end':
-      return <Flag className={cn("w-4 h-4", color)} />
     default:
       return <Square className={cn("w-4 h-4", color)} />
   }
@@ -92,6 +83,7 @@ export default function WorkflowBuilderPage() {
   const [draggedBlockType, setDraggedBlockType] = useState<BlockType | null>(null)
   const [connectingFrom, setConnectingFrom] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
+  const [entrypointNodeId, setEntrypointNodeId] = useState<string | null>(null)
   const canvasContainerRef = useRef<HTMLDivElement>(null)
   const isDropProcessingRef = useRef(false)
   const [viewMode, setViewMode] = useState<'visual' | 'json'>('visual')
@@ -106,67 +98,68 @@ export default function WorkflowBuilderPage() {
     
     if (savedWorkflow) {
       const data = JSON.parse(savedWorkflow)
-      setWorkflowTitle(data.title || 'Untitled Workflow')
+      setWorkflowTitle(data.name || 'Untitled Workflow')
+      setEntrypointNodeId(data.trigger?.nodeId || null)
       
       const nodesWithIcons = (data.nodes || []).map((node: any) => {
-        const nodeType = node.data.nodeType || 'action'
+        const nodeType = node.type || 'action'
         const blockType = BLOCK_TYPES.find(b => b.type === nodeType)
         const color = blockType?.color || 'text-gray-500'
         
-        return {
-          ...node,
+        const convertedNode: Node = {
+          id: node.id,
+          type: nodeType,
+          name: node.name || 'Untitled',
+          position: node.position || { x: 0, y: 0 },
           data: {
             ...node.data,
-            icon: getIconForNodeType(nodeType, color)
+            icon: getIconForNodeType(nodeType, color),
+            description: node.description || node.data?.description,
+            status: node.data?.status
           }
         }
+        
+        return convertedNode
       })
       
       setNodes(nodesWithIcons)
       setConnections(data.connections || [])
     } else {
-      const startNode: Node[] = [
-        {
-          id: 'node-1',
-          x: 350,
-          y: 300,
-          data: {
-            title: 'Start',
-            icon: <Play className="w-4 h-4 text-success-500" />,
-            description: 'New start block',
-            status: 'success',
-            nodeType: 'start'
-          }
-        }
-      ]
-
-      setNodes(startNode)
+      setNodes([])
       setConnections([])
       setWorkflowTitle('Untitled Workflow')
+      setEntrypointNodeId(null)
     }
   }, [workflowId])
 
   useEffect(() => {
     if (nodes.length === 0) return
     
-    // Clear existing timer
     if (autoSaveTimerRef.current) {
       clearTimeout(autoSaveTimerRef.current)
     }
     
-    // Set new timer to save after 1 second of inactivity
     autoSaveTimerRef.current = setTimeout(() => {
-      const nodesToSave = nodes.map(node => ({
-        ...node,
-        data: {
-          ...node.data,
-          icon: undefined // Don't save React elements
+      const nodesToSave = nodes.map(node => {
+        const { icon, ...dataWithoutIcon } = node.data || {}
+        return {
+          id: node.id,
+          type: node.type,
+          name: node.name,
+          position: node.position,
+          data: dataWithoutIcon,
+          description: node.data?.description
         }
-      }))
+      })
       
       const workflowData = {
         id: workflowId,
+        name: workflowTitle,
         title: workflowTitle,
+        trigger: {
+          type: 'manual',
+          nodeId: entrypointNodeId || ''
+        },
         nodes: nodesToSave,
         connections,
         updatedAt: new Date().toISOString()
@@ -174,31 +167,38 @@ export default function WorkflowBuilderPage() {
       
       localStorage.setItem(`workflow_${workflowId}`, JSON.stringify(workflowData))
       console.log('[v0] Auto-saved workflow with', nodes.length, 'nodes')
-    }, 1000) // Wait 1 second after last change
+    }, 1000)
     
-    // Cleanup timer on unmount
     return () => {
       if (autoSaveTimerRef.current) {
         clearTimeout(autoSaveTimerRef.current)
       }
     }
-  }, [nodes, connections, workflowId, workflowTitle])
+  }, [nodes, connections, workflowId, workflowTitle, entrypointNodeId])
 
-  // Save workflow
   const handleSave = useCallback(() => {
     setIsSaving(true)
     
-    const nodesToSave = nodes.map(node => ({
-      ...node,
-      data: {
-        ...node.data,
-        icon: undefined
+    const nodesToSave = nodes.map(node => {
+      const { icon, ...dataWithoutIcon } = node.data || {}
+      return {
+        id: node.id,
+        type: node.type,
+        name: node.name,
+        position: node.position,
+        data: dataWithoutIcon,
+        description: node.data?.description
       }
-    }))
+    })
     
     const workflowData = {
       id: workflowId,
+      name: workflowTitle,
       title: workflowTitle,
+      trigger: {
+        type: 'manual',
+        nodeId: entrypointNodeId || ''
+      },
       nodes: nodesToSave,
       connections,
       updatedAt: new Date().toISOString()
@@ -234,21 +234,29 @@ export default function WorkflowBuilderPage() {
       setIsSaving(false)
       alert('Workflow saved successfully!')
     }, 500)
-  }, [workflowId, workflowTitle, nodes, connections])
+  }, [workflowId, workflowTitle, nodes, connections, entrypointNodeId])
 
-  // Publish workflow
   const handlePublish = useCallback(() => {
-    const nodesToSave = nodes.map(node => ({
-      ...node,
-      data: {
-        ...node.data,
-        icon: undefined
+    const nodesToSave = nodes.map(node => {
+      const { icon, ...dataWithoutIcon } = node.data || {}
+      return {
+        id: node.id,
+        type: node.type,
+        name: node.name,
+        position: node.position,
+        data: dataWithoutIcon,
+        description: node.data?.description
       }
-    }))
+    })
     
     const workflowData = {
       id: workflowId,
+      name: workflowTitle,
       title: workflowTitle,
+      trigger: {
+        type: 'manual',
+        nodeId: entrypointNodeId || ''
+      },
       nodes: nodesToSave,
       connections,
       isPublished: true,
@@ -265,64 +273,40 @@ export default function WorkflowBuilderPage() {
     }
     
     alert('Workflow published successfully!')
-  }, [workflowId, workflowTitle, nodes, connections])
+  }, [workflowId, workflowTitle, nodes, connections, entrypointNodeId])
 
-  // Handle node move
   const handleNodeMove = useCallback((nodeId: string, x: number, y: number) => {
     setNodes(prev => prev.map(node => 
-      node.id === nodeId ? { ...node, x, y } : node
+      node.id === nodeId ? { ...node, position: { x, y } } : node
     ))
   }, [])
 
-  // Handle node select
   const handleNodeSelect = useCallback((nodeId: string, multi: boolean) => {
     setSelectedNodeId(nodeId)
   }, [])
 
-  // Handle node delete
   const handleNodeDelete = useCallback((nodeId: string) => {
-    const nodeToDelete = nodes.find(node => node.id === nodeId)
-    if (nodeToDelete?.data.title === 'Start') {
-      alert('Cannot delete the Start block')
-      return
-    }
-    
     setNodes(prev => prev.filter(node => node.id !== nodeId))
     setConnections(prev => prev.filter(conn => 
       conn.from !== nodeId && conn.to !== nodeId
     ))
-  }, [nodes])
+  }, [])
 
   const handleNodesDelete = useCallback((nodeIds: string[]) => {
-    // Check if trying to delete Start block
-    const hasStartBlock = nodeIds.some(id => {
-      const node = nodes.find(n => n.id === id)
-      return node?.data.title === 'Start'
-    })
-    
-    if (hasStartBlock) {
-      alert('Cannot delete the Start block')
-      return
-    }
-    
-    // Delete nodes and their connections
     setNodes(prev => prev.filter(node => !nodeIds.includes(node.id)))
     setConnections(prev => prev.filter(conn => 
       !nodeIds.includes(conn.from) && !nodeIds.includes(conn.to)
     ))
-  }, [nodes])
+  }, [])
 
-  // Handle node edit (double-click)
   const handleNodeEdit = useCallback((nodeId: string) => {
-    // Navigate to block editing mode
     router.push(`/workflow/${workflowId}/block/${nodeId}`)
   }, [workflowId, router])
 
-  // Handle drag from sidebar
   const handleBlockDragStart = (blockType: BlockType, e: React.DragEvent) => {
     setDraggedBlockType(blockType)
     e.dataTransfer.effectAllowed = 'copy'
-    e.dataTransfer.setData('text/plain', blockType.type) // Simple data for validation
+    e.dataTransfer.setData('text/plain', blockType.type)
   }
 
   const handleCanvasDrop = (e: React.DragEvent) => {
@@ -331,15 +315,6 @@ export default function WorkflowBuilderPage() {
     
     if (isDropProcessingRef.current || !draggedBlockType) {
       return
-    }
-
-    if (draggedBlockType.type === 'start') {
-      const hasStartBlock = nodes.some(node => node.data.title === 'Start')
-      if (hasStartBlock) {
-        alert('Only one Start block is allowed per workflow')
-        setDraggedBlockType(null)
-        return
-      }
     }
 
     isDropProcessingRef.current = true
@@ -355,9 +330,9 @@ export default function WorkflowBuilderPage() {
     let statusColor: 'success' | 'error' | 'warning' | 'pending' | 'running' = 'pending'
     
     switch (draggedBlockType.type) {
-      case 'start':
-        iconColor = 'text-success-500'
-        statusColor = 'success'
+      case 'trigger':
+        iconColor = 'text-purple-500'
+        statusColor = 'pending'
         break
       case 'form':
         iconColor = 'text-primary-500'
@@ -371,24 +346,19 @@ export default function WorkflowBuilderPage() {
         iconColor = 'text-warning-500'
         statusColor = 'warning'
         break
-      case 'end':
-        iconColor = 'text-error-500'
-        statusColor = 'error'
-        break
     }
 
     const nodeId = `node-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
 
     const newNode: Node = {
       id: nodeId,
-      x,
-      y,
+      type: draggedBlockType.type,
+      name: draggedBlockType.label,
+      position: { x, y },
       data: {
-        title: draggedBlockType.label,
         icon: getIconForNodeType(draggedBlockType.type, iconColor),
         description: `New ${draggedBlockType.label.toLowerCase()} block`,
-        status: statusColor,
-        nodeType: draggedBlockType.type
+        status: statusColor
       }
     }
 
@@ -422,18 +392,21 @@ export default function WorkflowBuilderPage() {
       return
     }
     
+    if (type === 'input' && nodeId === entrypointNodeId) {
+      console.log('[v0] Cannot connect to entrypoint node input')
+      setConnectingFrom(null)
+      return
+    }
+    
     if (type === 'output') {
       console.log('[v0] Starting connection from:', nodeId, 'port:', port || 'default')
-      // Store the port information with the connecting node
       setConnectingFrom(port ? `${nodeId}:${port}` : nodeId)
     } else if (type === 'input') {
       if (connectingFrom && !connectingFrom.startsWith(nodeId)) {
-        // Parse the connecting from to get node id and port
         const [fromNodeId, fromPort] = connectingFrom.split(':')
         
         console.log('[v0] Completing connection from', fromNodeId, 'port', fromPort, 'to', nodeId)
         
-        // Determine label based on port
         let label = undefined
         if (fromPort === 'true') {
           label = 'True'
@@ -456,7 +429,7 @@ export default function WorkflowBuilderPage() {
         setConnectingFrom(null)
       }
     }
-  }, [connectingFrom])
+  }, [connectingFrom, entrypointNodeId])
 
   const handleConnectionDelete = useCallback((connectionId: string) => {
     setConnections(prev => prev.filter(conn => conn.id !== connectionId))
@@ -466,70 +439,102 @@ export default function WorkflowBuilderPage() {
     if (viewMode === 'json') {
       const workflowJSON = {
         id: workflowId,
-        title: workflowTitle,
+        name: workflowTitle,
+        description: null,
+        trigger: {
+          type: 'manual',
+          nodeId: entrypointNodeId || ''
+        },
         nodes: nodes.map(node => ({
           id: node.id,
-          x: node.x,
-          y: node.y,
-          data: {
-            title: node.data.title,
-            description: node.data.description,
-            status: node.data.status,
-            nodeType: node.data.nodeType
-          }
+          type: node.type,
+          name: node.name,
+          position: node.position
         })),
-        connections: connections,
-        metadata: {
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        }
+        connections: connections.map(conn => ({
+          from: conn.from,
+          to: conn.to,
+          condition: conn.fromPort && conn.fromPort !== 'output' ? {
+            type: conn.fromPort,
+            expression: null
+          } : null
+        })),
+        isPublished: false,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
       }
       setJsonData(workflowJSON)
     }
-  }, [viewMode, nodes, connections, workflowId, workflowTitle])
+  }, [viewMode, nodes, connections, workflowId, workflowTitle, entrypointNodeId])
 
   const handleJSONChange = useCallback((newData: any) => {
     setJsonData(newData)
     
-    // Update visual state from JSON
-    if (newData.title) setWorkflowTitle(newData.title)
+    if (newData.name) setWorkflowTitle(newData.name)
+    if (newData.trigger?.nodeId) setEntrypointNodeId(newData.trigger.nodeId)
     if (newData.nodes) {
       const nodesWithIcons = newData.nodes.map((node: any) => {
-        const nodeType = node.data.nodeType || 'action'
+        const nodeType = node.type || 'action'
         const blockType = BLOCK_TYPES.find(b => b.type === nodeType)
         const color = blockType?.color || 'text-gray-500'
         
         return {
-          ...node,
+          id: node.id,
+          type: nodeType,
+          name: node.name,
+          position: node.position || { x: 0, y: 0 },
           data: {
             ...node.data,
-            icon: getIconForNodeType(nodeType, color)
+            icon: getIconForNodeType(nodeType, color),
+            description: node.description || node.data?.description,
+            status: node.status
           }
         }
       })
       setNodes(nodesWithIcons)
     }
-    if (newData.connections) setConnections(newData.connections)
+    if (newData.connections) {
+      const convertedConnections = newData.connections.map((conn: any) => ({
+        id: `conn-${conn.from}-${conn.to}`,
+        from: conn.from,
+        to: conn.to,
+        fromPort: conn.condition?.type || 'output',
+        toPort: 'input',
+        label: conn.condition?.type === 'true' ? 'True' : conn.condition?.type === 'false' ? 'False' : undefined
+      }))
+      setConnections(convertedConnections)
+    }
   }, [])
 
   const handleFormatJSON = useCallback(() => {
     const formatted = {
-      ...jsonData,
+      id: workflowId,
+      name: workflowTitle,
+      description: null,
+      trigger: {
+        type: 'manual',
+        nodeId: entrypointNodeId || ''
+      },
       nodes: nodes.map(node => ({
         id: node.id,
-        x: node.x,
-        y: node.y,
-        data: {
-          title: node.data.title,
-          description: node.data.description,
-          status: node.data.status,
-          nodeType: node.data.nodeType
-        }
+        type: node.type,
+        name: node.name,
+        position: node.position
       })),
-      connections: connections
+      connections: connections.map(conn => ({
+        from: conn.from,
+        to: conn.to,
+        condition: conn.fromPort && conn.fromPort !== 'output' ? {
+          type: conn.fromPort,
+          expression: null
+        } : null
+      })),
+      isPublished: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
     }
     setJsonData(formatted)
-  }, [jsonData, nodes, connections])
+  }, [workflowId, workflowTitle, nodes, connections, entrypointNodeId])
 
   const handleValidateJSON = useCallback(() => {
     try {
@@ -542,13 +547,11 @@ export default function WorkflowBuilderPage() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Delete key to delete selected node(s)
       if ((e.key === 'Delete' || e.key === 'Backspace') && selectedNodeId) {
         e.preventDefault()
         handleNodeDelete(selectedNodeId)
       }
       
-      // ESC to cancel connection
       if (e.key === 'Escape' && connectingFrom) {
         setConnectingFrom(null)
       }
@@ -558,11 +561,11 @@ export default function WorkflowBuilderPage() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [selectedNodeId, connectingFrom])
 
+  const formNodes = nodes.filter(node => node.type === 'form')
+
   return (
     <div className="flex h-screen flex-col bg-gray-50 dark:bg-[#1A1A1A]">
-      {/* Top Bar */}
       <div className="flex h-[60px] items-center justify-between border-b border-gray-200 bg-white px-4 dark:border-gray-700 dark:bg-[#252525]">
-        {/* Left: Back button and title */}
         <div className="flex items-center gap-3">
           <Button
             variant="tertiary"
@@ -583,7 +586,6 @@ export default function WorkflowBuilderPage() {
           />
         </div>
 
-        {/* Right: View mode toggle + Action buttons */}
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1 rounded-md border border-gray-200 p-1 dark:border-gray-700">
             <button
@@ -628,16 +630,13 @@ export default function WorkflowBuilderPage() {
         </div>
       </div>
 
-      {/* Main Content */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Left Sidebar - Block Library or JSON Actions */}
         <div
           className={cn(
             'relative border-r border-gray-200 bg-white transition-all duration-300 dark:border-gray-700 dark:bg-[#252525]',
             isSidebarOpen ? 'w-[250px]' : 'w-0'
           )}
         >
-          {/* Toggle Button */}
           <button
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
             className={cn(
@@ -683,6 +682,35 @@ export default function WorkflowBuilderPage() {
                     ))}
                   </div>
 
+                  <div className="mt-6 space-y-2">
+                    <h3 className="text-heading-s text-gray-900 dark:text-gray-100">
+                      Entrypoint
+                    </h3>
+                    <select
+                      value={entrypointNodeId || ''}
+                      onChange={(e) => setEntrypointNodeId(e.target.value || null)}
+                      className={cn(
+                        'w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-body',
+                        'text-gray-900 dark:text-gray-100 dark:bg-gray-800 dark:border-gray-700',
+                        'focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 outline-none',
+                        'disabled:opacity-50 disabled:cursor-not-allowed'
+                      )}
+                      disabled={formNodes.length === 0}
+                    >
+                      <option value="">No entrypoint</option>
+                      {formNodes.map((node) => (
+                        <option key={node.id} value={node.id}>
+                          {node.name}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-body-small text-gray-600 dark:text-gray-400">
+                      {formNodes.length === 0
+                        ? 'Add a form node to set an entrypoint'
+                        : 'Select which form node is the entrypoint'}
+                    </p>
+                  </div>
+
                   <div className="mt-6 rounded-md bg-gray-50 p-3 dark:bg-gray-800">
                     <p className="text-body-small text-gray-600 dark:text-gray-400">
                       Drag blocks onto the canvas. Click output ports (right) then input ports (left) to connect blocks.
@@ -726,7 +754,6 @@ export default function WorkflowBuilderPage() {
           )}
         </div>
 
-        {/* Center - Canvas or JSON Editor */}
         {viewMode === 'visual' ? (
           <div 
             ref={canvasContainerRef}
@@ -748,21 +775,23 @@ export default function WorkflowBuilderPage() {
               connectingFrom={connectingFrom}
               onNodeDelete={handleNodesDelete}
               isChatOpen={isChatOpen}
+              entrypointNodeId={entrypointNodeId}
             >
               {nodes.map((node) => (
                 <WorkflowNode
                   key={node.id}
                   id={node.id}
-                  title={node.data.title}
-                  icon={node.data.icon}
-                  description={node.data.description}
-                  status={node.data.status}
+                  name={node.name}
+                  icon={node.data?.icon}
+                  description={node.data?.description}
+                  status={node.data?.status}
                   selected={selectedNodeId === node.id}
                   onDelete={() => handleNodeDelete(node.id)}
                   onEdit={() => handleNodeEdit(node.id)}
                   onPortClick={(type, port) => handlePortClick(node.id, type, port)}
                   isConnecting={connectingFrom?.startsWith(node.id)}
-                  nodeType={node.data.nodeType as any}
+                  nodeType={node.type as any}
+                  isEntrypoint={node.id === entrypointNodeId}
                 />
               ))}
             </WorkflowCanvas>
@@ -778,7 +807,6 @@ export default function WorkflowBuilderPage() {
           </div>
         )}
 
-        {/* Right Panel - AI Chat */}
         {isChatOpen && (
           <ChatPanel
             context="workflow_creation"
@@ -791,7 +819,6 @@ export default function WorkflowBuilderPage() {
         )}
       </div>
 
-      {/* Show chat button if closed */}
       {!isChatOpen && (
         <button
           onClick={() => setIsChatOpen(true)}

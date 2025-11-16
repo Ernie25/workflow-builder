@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
-import { Plus, LayoutGrid, Settings, Moon, Sun, ChevronDown, Menu, X, Edit2, Trash2, Eye, EyeOff } from 'lucide-react'
+import { Plus, LayoutGrid, Settings, Moon, Sun, ChevronDown, Menu, X, Edit2, Trash2, Eye, EyeOff, Play, History } from 'lucide-react'
 
 interface Workflow {
   id: string
@@ -111,6 +111,29 @@ export default function WorkflowPortal() {
   const createNewWorkflow = () => {
     const newId = Date.now().toString()
     router.push(`/workflow/${newId}`)
+  }
+
+  const executeWorkflow = (workflowId: string) => {
+    // Create a new execution
+    const execution = {
+      id: Date.now().toString(),
+      workflowId: workflowId,
+      name: workflows.find(w => w.id === workflowId)?.name || 'Workflow',
+      description: workflows.find(w => w.id === workflowId)?.description || '',
+      status: 'notStarted',
+      startedAt: new Date().toISOString(),
+      finishedAt: null,
+      context: {}
+    }
+
+    // Save execution to localStorage
+    const existingExecutions = localStorage.getItem(`executions_${workflowId}`)
+    const executions = existingExecutions ? JSON.parse(existingExecutions) : []
+    executions.push(execution)
+    localStorage.setItem(`executions_${workflowId}`, JSON.stringify(executions))
+
+    // Navigate to the workflow run page
+    router.push(`/workflow/${workflowId}/run`)
   }
 
   const filteredWorkflows = userRole === 'admin' 
@@ -376,18 +399,56 @@ export default function WorkflowPortal() {
                           >
                             <Trash2 className="h-5 w-5" />
                           </button>
+                          {workflow.isPublished && (
+                            <>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  executeWorkflow(workflow.id)
+                                }}
+                                className="p-2 text-slate-400 hover:text-success-600 dark:hover:text-success-400 hover:bg-slate-100 dark:hover:bg-gray-800 rounded-md transition-all opacity-0 group-hover:opacity-100"
+                                title="Execute Workflow"
+                              >
+                                <Play className="h-5 w-5" />
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  router.push(`/workflow/${workflow.id}/executions`)
+                                }}
+                                className="p-2 text-slate-400 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-slate-100 dark:hover:bg-gray-800 rounded-md transition-all opacity-0 group-hover:opacity-100"
+                                title="View Executions"
+                              >
+                                <History className="h-5 w-5" />
+                              </button>
+                            </>
+                          )}
                         </>
                       ) : (
-                        <Button 
-                          variant="secondary" 
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            router.push(`/workflow/${workflow.id}/run`)
-                          }}
-                        >
-                          Open
-                        </Button>
+                        <div className="flex gap-2">
+                          <Button 
+                            variant="primary" 
+                            size="sm"
+                            icon={<Play className="h-4 w-4" />}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              executeWorkflow(workflow.id)
+                            }}
+                          >
+                            Execute
+                          </Button>
+                          <Button 
+                            variant="secondary" 
+                            size="sm"
+                            icon={<History className="h-4 w-4" />}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              router.push(`/workflow/${workflow.id}/executions`)
+                            }}
+                          >
+                            Executions
+                          </Button>
+                        </div>
                       )}
                     </div>
                   </div>
